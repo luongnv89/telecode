@@ -4,10 +4,12 @@ import type { ClaudeAdapter } from '../../src/claude/adapter.js';
 import type { TelegramSender } from '../../src/telegram/sender.js';
 import type { AuditWriter } from '../../src/audit/writer.js';
 import type { SessionManager } from '../../src/claude/session-manager.js';
+import type { LockManager } from '../../src/lock/manager.js';
 import type { ValidatedCommand } from '../../src/types/commands.js';
 import type { ResponseEnvelope } from '../../src/types/envelope.js';
 import type { Session } from '../../src/types/session.js';
 import { TelecodeError } from '../../src/types/errors.js';
+import { createLockManager } from '../../src/lock/manager.js';
 
 // ---- Helpers ----
 
@@ -100,6 +102,8 @@ function createMockSessionManager(session: Session | null = null): SessionManage
     updateState: vi.fn((state) => {
       if (currentSession) currentSession.state = state;
     }),
+    getTransitions: vi.fn(() => []),
+    getTransitionsForSession: vi.fn(() => []),
   } as unknown as SessionManager;
 }
 
@@ -110,6 +114,7 @@ describe('command handlers', () => {
   let sender: TelegramSender;
   let auditWriter: AuditWriter;
   let sessionManager: SessionManager;
+  let lockManager: LockManager;
   let deps: HandlerDeps;
 
   beforeEach(() => {
@@ -117,7 +122,8 @@ describe('command handlers', () => {
     sender = createMockSender();
     auditWriter = createMockAuditWriter();
     sessionManager = createMockSessionManager();
-    deps = { claudeAdapter: adapter, sessionManager, sender, auditWriter };
+    lockManager = createLockManager();
+    deps = { claudeAdapter: adapter, sessionManager, lockManager, sender, auditWriter };
   });
 
   describe('/start_session', () => {
@@ -135,6 +141,17 @@ describe('command handlers', () => {
       expect(sessionManager.startSession).toHaveBeenCalledWith(123, 456);
     });
 
+    it('acquires lock on session start', async () => {
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('start_session');
+
+      await handlers.start_session(cmd);
+
+      expect(lockManager.isLocked()).toBe(true);
+      expect(lockManager.getLockInfo()?.userId).toBe(123);
+      expect(lockManager.getLockInfo()?.chatId).toBe(456);
+    });
+
     it('opens audit writer with session info', async () => {
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('start_session');
@@ -145,6 +162,64 @@ describe('command handlers', () => {
       expect(auditWriter.write).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'session_started' }),
       );
+    });
+
+    it('writes lock_acquired audit event', async () => {
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('start_session');
+
+      await handlers.start_session(cmd);
+
+      expect(auditWriter.write).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'lock_acquired' }),
+      );
+    });
+
+    it('rejects second user with SESSION_LOCKED', async () => {
+      const handlers = createCommandHandlers(deps);
+
+      // First user starts session
+      await handlers.start_session(makeCommand('start_session'));
+
+      // Second user tries to start
+      const cmd2 = makeCommand('start_session', { userId: 999, chatId: 888 });
+      const result = await handlers.start_session(cmd2);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('error');
+      if (result!.type === 'error') {
+        expect(result!.code).toBe('SESSION_LOCKED');
+      }
+    });
+
+    it('writes lock_rejected audit event for denied connection', async () => {
+      const handlers = createCommandHandlers(deps);
+
+      await handlers.start_session(makeCommand('start_session'));
+
+      const cmd2 = makeCommand('start_session', { userId: 999, chatId: 888 });
+      await handlers.start_session(cmd2);
+
+      expect(auditWriter.write).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'lock_rejected', userId: 999 }),
+      );
+    });
+
+    it('allows same user to reacquire their lock', async () => {
+      const handlers = createCommandHandlers(deps);
+
+      // User starts first session
+      await handlers.start_session(makeCommand('start_session'));
+
+      // Simulate stop so sessionManager allows re-start
+      (sessionManager.isActive as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      (sessionManager.getSession as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      // Same user starts again
+      const result = await handlers.start_session(makeCommand('start_session'));
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('ack');
     });
 
     it('returns error when session already active', async () => {
@@ -162,6 +237,20 @@ describe('command handlers', () => {
       if (result!.type === 'error') {
         expect(result!.message).toContain('already active');
       }
+    });
+
+    it('releases lock on failure', async () => {
+      (sessionManager.startSession as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Claude is down'),
+      );
+
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('start_session');
+
+      await handlers.start_session(cmd);
+
+      // Lock should be released after failure
+      expect(lockManager.isLocked()).toBe(false);
     });
 
     it('handles TelecodeError with proper code', async () => {
@@ -185,7 +274,9 @@ describe('command handlers', () => {
   describe('/send', () => {
     it('calls adapter.sendPrompt and returns result', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'write a test' });
 
@@ -203,8 +294,40 @@ describe('command handlers', () => {
       );
     });
 
+    it('returns error when no lock is held', async () => {
+      sessionManager = createMockSessionManager(makeSession());
+      deps = { ...deps, sessionManager };
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('send', { prompt: 'hello' });
+
+      const result = await handlers.send(cmd);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('error');
+      if (result!.type === 'error') {
+        expect(result!.code).toBe('SESSION_NOT_FOUND');
+      }
+    });
+
+    it('returns SESSION_LOCKED when different user tries to send', async () => {
+      sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('send', { prompt: 'hello', userId: 999, chatId: 888 });
+
+      const result = await handlers.send(cmd);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('error');
+      if (result!.type === 'error') {
+        expect(result!.code).toBe('SESSION_LOCKED');
+      }
+    });
+
     it('returns error when no session is active', async () => {
-      // sessionManager default has no session
+      // No session, no lock
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'hello' });
 
@@ -218,6 +341,9 @@ describe('command handlers', () => {
     });
 
     it('returns error for wrong command type', async () => {
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, lockManager };
       const handlers = createCommandHandlers(deps);
       // Simulate a misrouted command
       const cmd: ValidatedCommand = {
@@ -242,7 +368,9 @@ describe('command handlers', () => {
 
     it('updates state to busy then back to active', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'hello' });
 
@@ -254,7 +382,9 @@ describe('command handlers', () => {
 
     it('writes audit events for command and output', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'hello' });
 
@@ -270,6 +400,8 @@ describe('command handlers', () => {
 
     it('sends progress chunks via sender', async () => {
       sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
       // Override sendPrompt to call onChunk
       (adapter.sendPrompt as ReturnType<typeof vi.fn>).mockImplementation(
         async (_sid: string, _prompt: string, onChunk?: (chunk: any) => void) => {
@@ -285,7 +417,7 @@ describe('command handlers', () => {
           };
         },
       );
-      deps = { ...deps, sessionManager };
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'hello' });
 
@@ -299,6 +431,8 @@ describe('command handlers', () => {
 
     it('returns CLAUDE_ERROR when adapter result is not successful', async () => {
       sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
       (adapter.sendPrompt as ReturnType<typeof vi.fn>).mockResolvedValue({
         success: false,
         text: 'Something went wrong',
@@ -307,7 +441,7 @@ describe('command handlers', () => {
         numTurns: 0,
         errors: ['Something went wrong'],
       });
-      deps = { ...deps, sessionManager };
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'hello' });
 
@@ -323,10 +457,12 @@ describe('command handlers', () => {
 
     it('recovers state to active when adapter throws', async () => {
       sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
       (adapter.sendPrompt as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('Connection lost'),
       );
-      deps = { ...deps, sessionManager };
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('send', { prompt: 'hello' });
 
@@ -340,10 +476,12 @@ describe('command handlers', () => {
   });
 
   describe('/status', () => {
-    it('returns status with active session info', async () => {
+    it('returns status with active session info and lock details', async () => {
       const session = makeSession();
       sessionManager = createMockSessionManager(session);
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('status');
 
@@ -356,6 +494,8 @@ describe('command handlers', () => {
         expect(result!.sessionId).toBe('sess-001');
         expect(result!.state).toBe('active');
         expect(result!.uptime).toBeDefined();
+        expect(result!.locked).toBe(true);
+        expect(result!.lockOwnerUserId).toBe(123);
       }
     });
 
@@ -370,6 +510,7 @@ describe('command handlers', () => {
       if (result!.type === 'status') {
         expect(result!.sessionActive).toBe(false);
         expect(result!.sessionId).toBeUndefined();
+        expect(result!.locked).toBe(false);
       }
     });
 
@@ -392,9 +533,11 @@ describe('command handlers', () => {
   });
 
   describe('/stop', () => {
-    it('stops the session and closes audit writer', async () => {
+    it('stops the session, releases lock, and closes audit writer', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('stop');
 
@@ -407,11 +550,14 @@ describe('command handlers', () => {
       }
       expect(sessionManager.stopSession).toHaveBeenCalled();
       expect(auditWriter.close).toHaveBeenCalled();
+      expect(lockManager.isLocked()).toBe(false);
     });
 
-    it('writes session_stopped audit event', async () => {
+    it('writes session_stopped and lock_released audit events', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('stop');
 
@@ -420,6 +566,28 @@ describe('command handlers', () => {
       expect(auditWriter.write).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'session_stopped', sessionId: 'sess-001' }),
       );
+      expect(auditWriter.write).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'lock_released', sessionId: 'sess-001' }),
+      );
+    });
+
+    it('rejects stop from different user', async () => {
+      sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('stop', { userId: 999, chatId: 888 });
+
+      const result = await handlers.stop(cmd);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('error');
+      if (result!.type === 'error') {
+        expect(result!.code).toBe('SESSION_LOCKED');
+      }
+      // Lock should still be held
+      expect(lockManager.isLocked()).toBe(true);
     });
 
     it('handles stop when no session exists gracefully', async () => {
@@ -438,10 +606,12 @@ describe('command handlers', () => {
 
     it('returns error envelope when stopSession throws', async () => {
       sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
       (sessionManager.stopSession as ReturnType<typeof vi.fn>).mockRejectedValue(
         new TelecodeError('Claude timeout', 'CLAUDE_TIMEOUT'),
       );
-      deps = { ...deps, sessionManager };
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('stop');
 
@@ -458,7 +628,9 @@ describe('command handlers', () => {
   describe('/new_session', () => {
     it('resets session and returns ack', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('new_session');
 
@@ -472,9 +644,56 @@ describe('command handlers', () => {
       expect(sessionManager.resetSession).toHaveBeenCalled();
     });
 
+    it('updates lock with new session ID', async () => {
+      sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('new_session');
+
+      await handlers.new_session(cmd);
+
+      // Lock should still be held by same user, with new session ID
+      expect(lockManager.isLocked()).toBe(true);
+      expect(lockManager.getLockInfo()?.sessionId).toBe('sess-002');
+    });
+
+    it('returns SESSION_NOT_FOUND when no lock is held', async () => {
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('new_session');
+
+      const result = await handlers.new_session(cmd);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('error');
+      if (result!.type === 'error') {
+        expect(result!.code).toBe('SESSION_NOT_FOUND');
+      }
+    });
+
+    it('rejects reset from different user', async () => {
+      sessionManager = createMockSessionManager(makeSession());
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('new_session', { userId: 999, chatId: 888 });
+
+      const result = await handlers.new_session(cmd);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('error');
+      if (result!.type === 'error') {
+        expect(result!.code).toBe('SESSION_LOCKED');
+      }
+    });
+
     it('writes session_reset audit event for old session', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('new_session');
 
@@ -487,7 +706,9 @@ describe('command handlers', () => {
 
     it('closes old audit writer and opens new one', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('new_session');
 
@@ -499,7 +720,9 @@ describe('command handlers', () => {
 
     it('opens new audit writer with new session_started event', async () => {
       sessionManager = createMockSessionManager(makeSession());
-      deps = { ...deps, sessionManager };
+      lockManager = createLockManager();
+      lockManager.acquire(123, 456, 'sess-001');
+      deps = { ...deps, sessionManager, lockManager };
       const handlers = createCommandHandlers(deps);
       const cmd = makeCommand('new_session');
 
@@ -510,23 +733,6 @@ describe('command handlers', () => {
       expect(writeCalls).toHaveLength(2);
       expect(writeCalls[0][0].event).toBe('session_reset');
       expect(writeCalls[1][0].event).toBe('session_started');
-    });
-
-    it('returns error when no session to reset', async () => {
-      (sessionManager.resetSession as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error('No active session to reset.'),
-      );
-
-      const handlers = createCommandHandlers(deps);
-      const cmd = makeCommand('new_session');
-
-      const result = await handlers.new_session(cmd);
-
-      expect(result).toBeDefined();
-      expect(result!.type).toBe('error');
-      if (result!.type === 'error') {
-        expect(result!.message).toContain('No active session');
-      }
     });
   });
 

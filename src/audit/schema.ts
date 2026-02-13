@@ -88,16 +88,44 @@ export function outputDelivered(params: {
   };
 }
 
+export function lockAcquired(params: {
+  sessionId: string;
+  userId: number;
+  chatId: number;
+}): AuditEvent {
+  return { ...createBase(params), event: 'lock_acquired' };
+}
+
+export function lockReleased(params: {
+  sessionId: string;
+  userId: number;
+  chatId: number;
+}): AuditEvent {
+  return { ...createBase(params), event: 'lock_released' };
+}
+
+export function lockStaleReleased(params: {
+  sessionId: string;
+  userId: number;
+  chatId: number;
+}): AuditEvent {
+  return { ...createBase(params), event: 'lock_stale_released' };
+}
+
 export function lockRejected(params: {
   sessionId: string;
   userId: number;
   chatId: number;
   reason: string;
+  heldByUserId: number;
+  heldByChatId: number;
 }): AuditEvent {
   return {
     ...createBase(params),
     event: 'lock_rejected',
     reason: params.reason,
+    heldByUserId: params.heldByUserId,
+    heldByChatId: params.heldByChatId,
   };
 }
 

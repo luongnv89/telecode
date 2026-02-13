@@ -5,6 +5,7 @@ import { registerCommands } from './commands/router.js';
 import { createCommandHandlers } from './commands/handlers.js';
 import { createTelegramSender } from './sender.js';
 import { SessionManager } from '../claude/session-manager.js';
+import { createLockManager } from '../lock/manager.js';
 import type { ClaudeAdapter } from '../claude/adapter.js';
 import type { AuditWriter } from '../audit/writer.js';
 
@@ -20,12 +21,15 @@ export function createBot(deps: BotDeps): Bot {
   const bot = new Bot(config.telegramBotToken);
   const sender = createTelegramSender(bot);
   const sessionManager = new SessionManager(claudeAdapter);
+  const lockManager = createLockManager();
 
   const handlers = createCommandHandlers({
     claudeAdapter,
     sessionManager,
+    lockManager,
     sender,
     auditWriter,
+    sessionTimeoutMs: config.sessionTimeoutMs,
   });
 
   // Register auth middleware — runs before any command handlers

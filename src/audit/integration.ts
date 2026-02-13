@@ -17,7 +17,10 @@ export interface AuditLogger {
   logCommandReceived(ctx: AuditContext, commandType: string, rawText: string): Promise<void>;
   logOutputSanitized(ctx: AuditContext, redactionCount: number): Promise<void>;
   logOutputDelivered(ctx: AuditContext, charCount: number): Promise<void>;
-  logLockRejected(ctx: AuditContext, reason: string): Promise<void>;
+  logLockAcquired(ctx: AuditContext): Promise<void>;
+  logLockReleased(ctx: AuditContext): Promise<void>;
+  logLockStaleReleased(ctx: AuditContext): Promise<void>;
+  logLockRejected(ctx: AuditContext, reason: string, heldByUserId: number, heldByChatId: number): Promise<void>;
   logError(ctx: AuditContext, errorCode: string, errorMessage: string): Promise<void>;
 }
 
@@ -66,8 +69,23 @@ export function createAuditLogger(writer: AuditWriter): AuditLogger {
       await safeWrite(writer, event);
     },
 
-    async logLockRejected(ctx: AuditContext, reason: string): Promise<void> {
-      const event = schema.lockRejected({ ...ctx, reason });
+    async logLockAcquired(ctx: AuditContext): Promise<void> {
+      const event = schema.lockAcquired(ctx);
+      await safeWrite(writer, event);
+    },
+
+    async logLockReleased(ctx: AuditContext): Promise<void> {
+      const event = schema.lockReleased(ctx);
+      await safeWrite(writer, event);
+    },
+
+    async logLockStaleReleased(ctx: AuditContext): Promise<void> {
+      const event = schema.lockStaleReleased(ctx);
+      await safeWrite(writer, event);
+    },
+
+    async logLockRejected(ctx: AuditContext, reason: string, heldByUserId: number, heldByChatId: number): Promise<void> {
+      const event = schema.lockRejected({ ...ctx, reason, heldByUserId, heldByChatId });
       await safeWrite(writer, event);
     },
 

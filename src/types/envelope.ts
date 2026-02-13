@@ -21,6 +21,8 @@ export type ResponseEnvelope =
       sessionId?: string;
       state?: string;
       uptime?: number;
+      locked?: boolean;
+      lockOwnerUserId?: number;
       timestamp: Date;
     };
 
@@ -45,6 +47,8 @@ export function createStatus(info: {
   sessionId?: string;
   state?: string;
   uptime?: number;
+  locked?: boolean;
+  lockOwnerUserId?: number;
 }): ResponseEnvelope {
   return { type: 'status', ...info, timestamp: new Date() };
 }

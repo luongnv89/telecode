@@ -55,20 +55,20 @@
 ### Parallel Execution Groups
 
 **Wave 1** (start immediately):
-- [ ] Task 1.1
-- [ ] Task 1.2
-- [ ] Task 1.3
-- [ ] Task 1.5
+- [x] Task 1.1
+- [x] Task 1.2
+- [x] Task 1.3
+- [x] Task 1.5
 
 **Wave 2** (after Wave 1 core):
-- [ ] Task 1.4 *(requires 1.1, 1.2)*
-- [ ] Task 2.4 *(requires 1.5)*
-- [ ] Task 2.3 *(requires 1.3)*
-- [ ] Task 2.5 *(requires 1.3)*
+- [x] Task 1.4 *(requires 1.1, 1.2)*
+- [x] Task 2.4 *(requires 1.5)*
+- [x] Task 2.3 *(requires 1.3)*
+- [x] Task 2.5 *(requires 1.3)*
 
 **Wave 3**:
-- [ ] Task 2.1 *(requires 1.4)*
-- [ ] Task 2.2 *(requires 1.4)*
+- [x] Task 2.1 *(requires 1.4)*
+- [x] Task 2.2 *(requires 1.4)*
 
 **Wave 4**:
 - [ ] Task 3.1 *(requires 2.1, 2.2)*
@@ -96,9 +96,9 @@
 **Description**: Specify command grammar (`/start_session`, `/send`, `/status`, `/stop`, `/new_session`) and input/output payload schema for the wrapper.
 
 **Acceptance Criteria**:
-- [ ] Command schema documented with examples
-- [ ] Validation rules defined for invalid commands and missing args
-- [ ] Response envelope format defined for progress, logs, errors
+- [x] Command schema documented with examples
+- [x] Validation rules defined for invalid commands and missing args
+- [x] Response envelope format defined for progress, logs, errors
 
 **Dependencies**: None
 
@@ -111,9 +111,9 @@
 **Description**: Build Telegram integration layer (webhook or polling) with command receiver and outbound sender abstraction.
 
 **Acceptance Criteria**:
-- [ ] Bot receives and parses commands from Telegram
-- [ ] Outbound sender can post text updates to chat
-- [ ] Basic retry/error handling for Telegram API failures
+- [x] Bot receives and parses commands from Telegram
+- [x] Outbound sender can post text updates to chat
+- [x] Basic retry/error handling for Telegram API failures
 
 **Dependencies**: None
 
@@ -126,9 +126,9 @@
 **Description**: Build adapter to start/attach/send commands to local Claude Code terminal environment.
 
 **Acceptance Criteria**:
-- [ ] Adapter can attach to authorized local Claude environment
-- [ ] Adapter supports send + receive output stream
-- [ ] Adapter returns structured process errors
+- [x] Adapter can attach to authorized local Claude environment
+- [x] Adapter supports send + receive output stream
+- [x] Adapter returns structured process errors
 
 **Dependencies**: None
 
@@ -141,9 +141,9 @@
 **Description**: Connect Telegram command input through process adapter and return response chunks (without final hardening yet).
 
 **Acceptance Criteria**:
-- [ ] `/send` triggers Claude execution and returns output
-- [ ] `/status` reflects current runtime status
-- [ ] End-to-end flow works in local environment
+- [x] `/send` triggers Claude execution and returns output
+- [x] `/status` reflects current runtime status
+- [x] End-to-end flow works in local environment
 
 **Dependencies**: Task 1.1, Task 1.2
 
@@ -156,9 +156,9 @@
 **Description**: Specify event format, file naming, and dedicated local path for per-session logs.
 
 **Acceptance Criteria**:
-- [ ] JSONL event schema finalized
-- [ ] Session log path policy documented
-- [ ] Required event list mapped to schema fields
+- [x] JSONL event schema finalized
+- [x] Session log path policy documented
+- [x] Required event list mapped to schema fields
 
 **Dependencies**: None
 
@@ -173,9 +173,9 @@
 **Description**: Add lock acquisition/release logic to allow only one active connection and reject second connection attempts.
 
 **Acceptance Criteria**:
-- [ ] First connection acquires lock consistently
-- [ ] Second concurrent connection receives deterministic rejection
-- [ ] Lock recovery strategy exists for stale locks
+- [x] First connection acquires lock consistently
+- [x] Second concurrent connection receives deterministic rejection
+- [x] Lock recovery strategy exists for stale locks
 
 **Dependencies**: Task 1.4
 
@@ -188,9 +188,9 @@
 **Description**: Build state machine for `/start_session`, `/stop`, `/new_session` with `/clear`-like behavior on active connection.
 
 **Acceptance Criteria**:
-- [ ] `/new_session` resets Claude context without requiring new connection
-- [ ] `/stop` releases lock and terminates/cleans session
-- [ ] Session state transitions are logged and queryable
+- [x] `/new_session` resets Claude context without requiring new connection
+- [x] `/stop` releases lock and terminates/cleans session
+- [x] Session state transitions are logged and queryable
 
 **Dependencies**: Task 1.4
 
@@ -203,9 +203,9 @@
 **Description**: Add outbound preprocessing stage before Telegram send to remove/mask sensitive data classes.
 
 **Acceptance Criteria**:
-- [ ] All outbound chunks pass sanitizer stage
-- [ ] Sanitizer supports token/path/secret category handlers
-- [ ] Sanitizer failures block outbound send and raise alert
+- [x] All outbound chunks pass sanitizer stage
+- [x] Sanitizer supports token/path/secret category handlers
+- [x] Sanitizer failures block outbound send and raise alert
 
 **Dependencies**: Task 1.3
 
@@ -218,9 +218,9 @@
 **Description**: Persist structured event logs under dedicated local path with per-session files.
 
 **Acceptance Criteria**:
-- [ ] Session log file created on session start
-- [ ] Commands/actions/errors append JSONL events
-- [ ] Log write failure is surfaced to operator
+- [x] Session log file created on session start
+- [x] Commands/actions/errors append JSONL events
+- [x] Log write failure is surfaced to operator
 
 **Dependencies**: Task 1.5
 
@@ -233,9 +233,9 @@
 **Description**: Build regex ruleset to mask known secret/token/path patterns as secondary guardrail.
 
 **Acceptance Criteria**:
-- [ ] Rules cover API keys, bearer tokens, password-like strings, sensitive local paths
-- [ ] Masking is applied after sanitizer stage
-- [ ] Unit tests cover false-positive/false-negative basics
+- [x] Rules cover API keys, bearer tokens, password-like strings, sensitive local paths
+- [x] Masking is applied after sanitizer stage
+- [x] Unit tests cover false-positive/false-negative basics
 
 **Dependencies**: Task 1.3
 

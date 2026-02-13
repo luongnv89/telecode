@@ -14,5 +14,8 @@ export type AuditEvent =
   | AuditEventBase & { event: 'command_received'; commandType: string; rawText: string }
   | AuditEventBase & { event: 'output_sanitized'; redactionCount: number }
   | AuditEventBase & { event: 'output_delivered'; charCount: number }
-  | AuditEventBase & { event: 'lock_rejected'; reason: string }
+  | AuditEventBase & { event: 'lock_acquired' }
+  | AuditEventBase & { event: 'lock_released' }
+  | AuditEventBase & { event: 'lock_stale_released' }
+  | AuditEventBase & { event: 'lock_rejected'; reason: string; heldByUserId: number; heldByChatId: number }
   | AuditEventBase & { event: 'error_occurred'; errorCode: string; errorMessage: string };
