@@ -16,14 +16,14 @@ async function main(): Promise<void> {
   const auditWriter = createAuditWriter(config.logPath);
 
   console.log('[telecode] Creating bot...');
-  const bot = createBot({
+  const botWithMonitor = createBot({
     config,
     claudeAdapter,
     auditWriter,
   });
 
   console.log('[telecode] Starting bot...');
-  await startBot(bot);
+  await startBot(botWithMonitor);
 }
 
 main().catch((err) => {

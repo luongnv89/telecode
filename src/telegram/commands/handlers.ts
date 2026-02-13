@@ -12,6 +12,7 @@ import type { TelegramSender } from '../sender.js';
 import type { AuditWriter } from '../../audit/writer.js';
 import type { SessionManager } from '../../claude/session-manager.js';
 import type { LockManager } from '../../lock/manager.js';
+import type { ResilienceMonitor } from '../../resilience/monitor.js';
 import { TelecodeError } from '../../types/errors.js';
 import type { CommandHandlers } from './router.js';
 
@@ -22,10 +23,24 @@ export interface HandlerDeps {
   sender: TelegramSender;
   auditWriter: AuditWriter;
   sessionTimeoutMs?: number;
+  monitor?: ResilienceMonitor;
 }
 
 export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
-  const { claudeAdapter, sessionManager, lockManager, sender, auditWriter } = deps;
+  const { claudeAdapter, sessionManager, lockManager, sender, auditWriter, monitor } = deps;
+
+  /** Safe audit write that alerts on failure via the resilience monitor. */
+  async function safeAuditWrite(event: Parameters<AuditWriter['write']>[0], chatId?: number): Promise<void> {
+    try {
+      await auditWriter.write(event);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(`[audit] Write failure: ${error.message}`);
+      if (monitor && chatId) {
+        await monitor.notifyAuditWriteFailure(chatId, error);
+      }
+    }
+  }
 
   function handleError(err: unknown): ResponseEnvelope {
     if (err instanceof TelecodeError) {
@@ -55,20 +70,20 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           if (sessionManager.isActive()) {
             await sessionManager.stopSession();
           }
-          await auditWriter.write({
+          await safeAuditWrite({
             event: 'lock_stale_released',
             timestamp: new Date().toISOString(),
             sessionId: staleInfo?.sessionId ?? 'unknown',
             userId: staleInfo?.userId ?? 0,
             chatId: staleInfo?.chatId ?? 0,
             correlationId: staleInfo?.sessionId ?? 'unknown',
-          });
+          }, chatId);
         }
 
         // Attempt to acquire the connection lock
         const lockResult = lockManager.acquire(userId, chatId, 'pending');
         if (!lockResult.acquired) {
-          await auditWriter.write({
+          await safeAuditWrite({
             event: 'lock_rejected',
             timestamp: new Date().toISOString(),
             sessionId: 'none',
@@ -78,7 +93,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             reason: lockResult.reason,
             heldByUserId: lockResult.heldBy.userId,
             heldByChatId: lockResult.heldBy.chatId,
-          });
+          }, chatId);
           return createError(
             'SESSION_LOCKED',
             `Connection locked: ${lockResult.reason}. Use /stop from the owning chat first.`,
@@ -91,7 +106,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         lockManager.acquire(userId, chatId, session.sessionId);
 
         await auditWriter.open(session.sessionId, session.startedAt);
-        await auditWriter.write({
+        await safeAuditWrite({
           event: 'session_started',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
@@ -99,15 +114,15 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           userId,
           chatId,
           correlationId: session.sessionId,
-        });
-        await auditWriter.write({
+        }, chatId);
+        await safeAuditWrite({
           event: 'lock_acquired',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
           userId,
           chatId,
           correlationId: session.sessionId,
-        });
+        }, chatId);
 
         return createAck('start_session');
       } catch (err) {
@@ -145,7 +160,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
         sessionManager.updateState('busy');
 
-        await auditWriter.write({
+        await safeAuditWrite({
           event: 'command_received',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
@@ -155,7 +170,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           correlationId: session.sessionId,
           commandType: 'send',
           rawText: cmd.context.rawText,
-        });
+        }, chatId);
 
         const result = await claudeAdapter.sendPrompt(
           session.sessionId,
@@ -171,7 +186,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
         sessionManager.updateState('active');
 
-        await auditWriter.write({
+        await safeAuditWrite({
           event: 'output_delivered',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
@@ -180,7 +195,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           chatId: session.chatId,
           correlationId: session.sessionId,
           charCount: result.text.length,
-        });
+        }, chatId);
 
         if (!result.success) {
           return createError('CLAUDE_ERROR', result.text);
@@ -189,6 +204,14 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         return createResult(result.text);
       } catch (err) {
         sessionManager.updateState('active');
+
+        // Detect session crash and notify user
+        if (monitor && err instanceof Error) {
+          const session = sessionManager.getSession();
+          const chatId = session?.chatId ?? cmd.context.chatId;
+          await monitor.notifySessionCrash(chatId, err);
+        }
+
         return handleError(err);
       }
     },
@@ -228,7 +251,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         const session = sessionManager.getSession();
 
         if (session) {
-          await auditWriter.write({
+          await safeAuditWrite({
             event: 'session_stopped',
             timestamp: new Date().toISOString(),
             sessionId: session.sessionId,
@@ -236,18 +259,18 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             userId: session.userId,
             chatId: session.chatId,
             correlationId: session.sessionId,
-          });
+          }, session.chatId);
 
           // Release the connection lock
           lockManager.release(session.sessionId);
-          await auditWriter.write({
+          await safeAuditWrite({
             event: 'lock_released',
             timestamp: new Date().toISOString(),
             sessionId: session.sessionId,
             userId: session.userId,
             chatId: session.chatId,
             correlationId: session.sessionId,
-          });
+          }, session.chatId);
         }
 
         await sessionManager.stopSession();
@@ -278,7 +301,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         const oldSession = sessionManager.getSession();
 
         if (oldSession) {
-          await auditWriter.write({
+          await safeAuditWrite({
             event: 'session_reset',
             timestamp: new Date().toISOString(),
             sessionId: oldSession.sessionId,
@@ -286,7 +309,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             userId: oldSession.userId,
             chatId: oldSession.chatId,
             correlationId: oldSession.sessionId,
-          });
+          }, chatId);
           await auditWriter.close();
         }
 
@@ -296,7 +319,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         lockManager.acquire(userId, chatId, newSession.sessionId);
 
         await auditWriter.open(newSession.sessionId, newSession.startedAt);
-        await auditWriter.write({
+        await safeAuditWrite({
           event: 'session_started',
           timestamp: new Date().toISOString(),
           sessionId: newSession.sessionId,
@@ -304,7 +327,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           userId,
           chatId,
           correlationId: newSession.sessionId,
-        });
+        }, chatId);
 
         return createAck('new_session');
       } catch (err) {

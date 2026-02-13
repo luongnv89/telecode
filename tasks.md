@@ -71,9 +71,9 @@
 - [x] Task 2.2 *(requires 1.4)*
 
 **Wave 4**:
-- [ ] Task 3.1 *(requires 2.1, 2.2)*
-- [ ] Task 3.2 *(requires 2.3, 2.5)*
-- [ ] Task 3.3 *(requires 2.4, 2.5)*
+- [x] Task 3.1 *(requires 2.1, 2.2)*
+- [x] Task 3.2 *(requires 2.3, 2.5)*
+- [x] Task 3.3 *(requires 2.4, 2.5)*
 
 **Wave 5**:
 - [ ] Task 3.4 *(requires 3.1, 3.2, 3.3)*
@@ -250,9 +250,9 @@
 **Description**: Ensure every command path checks and respects the single concurrent connection policy.
 
 **Acceptance Criteria**:
-- [ ] All handlers enforce lock ownership checks
-- [ ] Rejection responses include actionable guidance
-- [ ] Lock metrics/events included in audit logs
+- [x] All handlers enforce lock ownership checks
+- [x] Rejection responses include actionable guidance
+- [x] Lock metrics/events included in audit logs
 
 **Dependencies**: Task 2.1, Task 2.2
 
@@ -265,9 +265,9 @@
 **Description**: Finalize safe output pipeline in production path and validate no raw chunks bypass it.
 
 **Acceptance Criteria**:
-- [ ] Outbound path is sanitizer-first then regex masking
-- [ ] No direct-send bypass exists in command handlers
-- [ ] Redaction events are traceable in logs
+- [x] Outbound path is sanitizer-first then regex masking
+- [x] No direct-send bypass exists in command handlers
+- [x] Redaction events are traceable in logs
 
 **Dependencies**: Task 2.3, Task 2.5
 
@@ -280,9 +280,9 @@
 **Description**: Add retries/timeouts and alerting for session crash, audit write errors, and transport failures.
 
 **Acceptance Criteria**:
-- [ ] Session crash detection + user notification implemented
-- [ ] Audit write failure triggers high-priority message
-- [ ] Retry policy implemented for Telegram transient failures
+- [x] Session crash detection + user notification implemented
+- [x] Audit write failure triggers high-priority message
+- [x] Retry policy implemented for Telegram transient failures
 
 **Dependencies**: Task 2.4, Task 2.5
 
