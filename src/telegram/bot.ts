@@ -4,19 +4,25 @@ import { createAuthMiddleware } from './middleware/auth.js';
 import { registerCommands } from './commands/router.js';
 import { createCommandHandlers } from './commands/handlers.js';
 import { createTelegramSender } from './sender.js';
-import { SessionManager } from '../claude/session-manager.js';
-import { createLockManager } from '../lock/manager.js';
 import { createDefaultPipeline } from '../sanitize/pipeline.js';
 import { createRegexMasker } from '../sanitize/regex-masking.js';
 import { createSafeSender } from '../sanitize/outbound.js';
 import { createResilienceMonitor, type ResilienceMonitor } from '../resilience/monitor.js';
-import type { ClaudeAdapter } from '../claude/adapter.js';
 import type { AuditWriter } from '../audit/writer.js';
+import type { SessionRegistry } from '../session/registry.js';
+import type { FocusManager } from '../session/focus-manager.js';
+import type { SessionPersistence } from '../session/persistence.js';
+import type { BookmarkStore } from '../session/bookmarks.js';
+import type { SessionDiscovery } from '../session/discovery.js';
 
 export interface BotDeps {
   config: AppConfig;
-  claudeAdapter: ClaudeAdapter;
+  sessionRegistry: SessionRegistry;
+  focusManager: FocusManager;
+  persistence: SessionPersistence;
   auditWriter: AuditWriter;
+  bookmarkStore?: BookmarkStore;
+  sessionDiscovery?: SessionDiscovery;
 }
 
 export interface BotWithMonitor {
@@ -25,12 +31,10 @@ export interface BotWithMonitor {
 }
 
 export function createBot(deps: BotDeps): BotWithMonitor {
-  const { config, claudeAdapter, auditWriter } = deps;
+  const { config, sessionRegistry, focusManager, persistence, auditWriter, bookmarkStore, sessionDiscovery } = deps;
 
   const bot = new Bot(config.telegramBotToken);
   const rawSender = createTelegramSender(bot);
-  const sessionManager = new SessionManager(claudeAdapter);
-  const lockManager = createLockManager();
 
   // Wrap sender with sanitization pipeline + regex masking
   const safeSender = createSafeSender({
@@ -43,22 +47,24 @@ export function createBot(deps: BotDeps): BotWithMonitor {
     },
   });
 
-  // Create resilience monitor for crash detection and timeout enforcement
+  // Create a lightweight resilience monitor.
+  // In multi-session mode, the monitor checks all sessions in the registry.
   const monitor = createResilienceMonitor({
-    sessionManager,
-    lockManager,
+    sessionRegistry,
     sender: safeSender,
     sessionTimeoutMs: config.sessionTimeoutMs,
   });
 
   const handlers = createCommandHandlers({
-    claudeAdapter,
-    sessionManager,
-    lockManager,
+    sessionRegistry,
+    focusManager,
+    persistence,
     sender: safeSender,
     auditWriter,
     sessionTimeoutMs: config.sessionTimeoutMs,
     monitor,
+    bookmarkStore,
+    sessionDiscovery,
   });
 
   // Register auth middleware — runs before any command handlers

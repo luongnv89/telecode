@@ -8,7 +8,7 @@ import type { SessionState } from '../types/session.js';
 import { parseOutputChunk, parseResultMessage, type ClaudeOutputChunk, type ClaudeResult } from './message-parser.js';
 
 export interface ClaudeSessionConfig {
-  model: string;
+  model?: string;
   cwd?: string;
   allowedTools?: string[];
 }
@@ -21,6 +21,7 @@ export interface ClaudeSessionInfo {
 
 export interface ClaudeAdapter {
   startSession(): Promise<{ claudeSessionId: string }>;
+  attachSession(claudeSessionId: string): Promise<{ claudeSessionId: string }>;
   sendPrompt(
     sessionId: string,
     prompt: string,
@@ -59,6 +60,32 @@ export function createClaudeAdapter(config: ClaudeSessionConfig): ClaudeAdapter 
       if (!claudeSessionId) {
         state = 'idle';
         throw new Error('Failed to establish Claude session — no session ID received');
+      }
+
+      return { claudeSessionId };
+    },
+
+    async attachSession(targetClaudeSessionId: string): Promise<{ claudeSessionId: string }> {
+      state = 'active';
+
+      // Use resume to reconnect to an existing Claude session
+      const q = query({
+        prompt: 'Session resumed. Ready for instructions.',
+        options: {
+          model: config.model,
+          resume: targetClaudeSessionId,
+        },
+      });
+
+      for await (const message of q) {
+        if ('session_id' in message && message.session_id) {
+          claudeSessionId = message.session_id;
+        }
+      }
+
+      if (!claudeSessionId) {
+        state = 'idle';
+        throw new Error('Failed to attach to Claude session — no session ID received');
       }
 
       return { claudeSessionId };

@@ -1,16 +1,81 @@
 import { loadConfig } from './config.js';
 import { createBot, startBot } from './telegram/bot.js';
-import { createClaudeAdapter } from './claude/adapter.js';
 import { createAuditWriter } from './audit/writer.js';
+import { SessionRegistry } from './session/registry.js';
+import { FocusManager } from './session/focus-manager.js';
+import { SessionPersistence } from './session/persistence.js';
+import { createBookmarkStore } from './session/bookmarks.js';
+import { createSessionDiscovery } from './session/discovery.js';
 
 async function main(): Promise<void> {
   console.log('[telecode] Loading configuration...');
   const config = loadConfig();
 
-  console.log('[telecode] Initializing Claude adapter...');
-  const claudeAdapter = createClaudeAdapter({
-    model: config.claudeModel,
+  console.log('[telecode] Initializing session registry...');
+  const sessionRegistry = new SessionRegistry({
+    maxSessions: config.maxSessions,
+    claudeModel: config.claudeModel,
   });
+
+  const focusManager = new FocusManager(sessionRegistry);
+  const persistence = new SessionPersistence({
+    filePath: config.sessionsFilePath,
+  });
+
+  // Initialize bookmarks
+  console.log('[telecode] Loading bookmarks...');
+  const bookmarkStore = createBookmarkStore(config.bookmarksFilePath);
+  await bookmarkStore.load();
+
+  // Initialize session discovery
+  const sessionDiscovery = createSessionDiscovery();
+
+  // Attempt to restore previous sessions
+  console.log('[telecode] Checking for persisted sessions...');
+  const savedState = await persistence.load();
+  if (savedState && savedState.sessions.length > 0) {
+    console.log(`[telecode] Found ${savedState.sessions.length} persisted session(s). Restoring...`);
+    for (const meta of savedState.sessions) {
+      try {
+        let session;
+        if (meta.claudeSessionId) {
+          // Try to resume with existing Claude session ID
+          try {
+            session = await sessionRegistry.resumeSession(
+              meta.userId,
+              meta.chatId,
+              meta.workingDirectory,
+              meta.claudeSessionId,
+              meta.name,
+            );
+            console.log(`[telecode] Resumed session [${session.sessionId.slice(0, 8)}] with Claude session ${meta.claudeSessionId.slice(0, 8)} in ${meta.workingDirectory}`);
+          } catch (resumeErr) {
+            console.warn(`[telecode] Failed to resume Claude session ${meta.claudeSessionId.slice(0, 8)}, creating fresh: ${resumeErr}`);
+            session = await sessionRegistry.createSession(
+              meta.userId,
+              meta.chatId,
+              meta.workingDirectory,
+              meta.name,
+            );
+            console.log(`[telecode] Created fresh session [${session.sessionId.slice(0, 8)}] in ${meta.workingDirectory}`);
+          }
+        } else {
+          session = await sessionRegistry.createSession(
+            meta.userId,
+            meta.chatId,
+            meta.workingDirectory,
+            meta.name,
+          );
+          console.log(`[telecode] Restored session [${session.sessionId.slice(0, 8)}] in ${meta.workingDirectory}`);
+        }
+      } catch (err) {
+        console.warn(`[telecode] Failed to restore session in ${meta.workingDirectory}: ${err}`);
+      }
+    }
+    // Restore focus map
+    focusManager.restoreFocusMap(savedState.focusMap);
+    console.log(`[telecode] ${sessionRegistry.size} session(s) restored.`);
+  }
 
   console.log('[telecode] Initializing audit writer...');
   const auditWriter = createAuditWriter(config.logPath);
@@ -18,9 +83,27 @@ async function main(): Promise<void> {
   console.log('[telecode] Creating bot...');
   const botWithMonitor = createBot({
     config,
-    claudeAdapter,
+    sessionRegistry,
+    focusManager,
+    persistence,
     auditWriter,
+    bookmarkStore,
+    sessionDiscovery,
   });
+
+  // Save state on shutdown
+  const originalShutdown = () => {
+    console.log('[telecode] Saving session state before shutdown...');
+    persistence.cancelPendingSave();
+    persistence.save(sessionRegistry, focusManager).then(() => {
+      console.log('[telecode] Session state saved.');
+    }).catch((err) => {
+      console.error('[telecode] Failed to save session state:', err);
+    });
+  };
+
+  process.on('SIGINT', originalShutdown);
+  process.on('SIGTERM', originalShutdown);
 
   console.log('[telecode] Starting bot...');
   await startBot(botWithMonitor);

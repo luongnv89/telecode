@@ -37,7 +37,12 @@ export class SessionManager {
     return this.transitions.filter((t) => t.sessionId === sessionId);
   }
 
-  async startSession(userId: number, chatId: number): Promise<Session> {
+  async startSession(
+    userId: number,
+    chatId: number,
+    workingDirectory: string = process.cwd(),
+    name?: string,
+  ): Promise<Session> {
     if (this.isActive()) {
       throw new Error('A session is already active. Stop it first or use /new_session.');
     }
@@ -52,11 +57,48 @@ export class SessionManager {
       state: 'starting',
       startedAt: now,
       lastActivityAt: now,
+      workingDirectory,
+      name,
     };
 
     this.recordTransition('none', 'starting', sessionId);
 
     const claudeSession = await this.adapter.startSession();
+    this.session.claudeSessionId = claudeSession.claudeSessionId;
+    this.session.state = 'active';
+    this.recordTransition('starting', 'active', sessionId);
+
+    return this.session;
+  }
+
+  async resumeSession(
+    userId: number,
+    chatId: number,
+    workingDirectory: string,
+    claudeSessionIdToResume: string,
+    name?: string,
+  ): Promise<Session> {
+    if (this.isActive()) {
+      throw new Error('A session is already active. Stop it first.');
+    }
+
+    const sessionId = uuidv4();
+    const now = new Date();
+
+    this.session = {
+      sessionId,
+      userId,
+      chatId,
+      state: 'starting',
+      startedAt: now,
+      lastActivityAt: now,
+      workingDirectory,
+      name,
+    };
+
+    this.recordTransition('none', 'starting', sessionId);
+
+    const claudeSession = await this.adapter.attachSession(claudeSessionIdToResume);
     this.session.claudeSessionId = claudeSession.claudeSessionId;
     this.session.state = 'active';
     this.recordTransition('starting', 'active', sessionId);
@@ -83,11 +125,11 @@ export class SessionManager {
       throw new Error('No active session to reset.');
     }
 
-    const { userId, chatId, sessionId, state } = this.session;
+    const { userId, chatId, sessionId, state, workingDirectory, name } = this.session;
     this.recordTransition(state, 'resetting', sessionId);
 
     await this.stopSession();
-    return this.startSession(userId, chatId);
+    return this.startSession(userId, chatId, workingDirectory, name);
   }
 
   updateState(state: SessionState): void {

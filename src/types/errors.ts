@@ -3,6 +3,9 @@ export type TelecodeErrorCode =
   | 'SESSION_NOT_FOUND'
   | 'SESSION_LOCKED'
   | 'SESSION_TIMEOUT'
+  | 'SESSION_LIMIT_EXCEEDED'
+  | 'NO_FOCUSED_SESSION'
+  | 'INVALID_WORKING_DIR'
   | 'COMMAND_PARSE_ERROR'
   | 'COMMAND_VALIDATION_ERROR'
   | 'CLAUDE_ERROR'
@@ -10,6 +13,9 @@ export type TelecodeErrorCode =
   | 'TELEGRAM_SEND_ERROR'
   | 'AUDIT_WRITE_ERROR'
   | 'CONFIG_ERROR'
+  | 'BOOKMARK_NOT_FOUND'
+  | 'DISCOVERY_ERROR'
+  | 'ATTACH_FAILED'
   | 'INTERNAL_ERROR';
 
 export class TelecodeError extends Error {

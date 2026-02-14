@@ -13,6 +13,22 @@ const DEFAULT_LOG_PATH = join(
   'logs'
 );
 
+const DEFAULT_SESSIONS_FILE = join(
+  homedir(),
+  'Library',
+  'Application Support',
+  'telecode',
+  'sessions.json'
+);
+
+const DEFAULT_BOOKMARKS_FILE = join(
+  homedir(),
+  'Library',
+  'Application Support',
+  'telecode',
+  'bookmarks.json'
+);
+
 const configSchema = z.object({
   telegramBotToken: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
   allowedUserIds: z
@@ -26,14 +42,27 @@ const configSchema = z.object({
     .default(DEFAULT_LOG_PATH),
   claudeModel: z
     .string()
-    .optional()
-    .default('claude-sonnet-4-5-20250929'),
+    .optional(),
   sessionTimeoutMs: z
     .string()
     .optional()
     .default('1800000')
     .transform((s) => parseInt(s, 10))
     .pipe(z.number().int().positive()),
+  maxSessions: z
+    .string()
+    .optional()
+    .default('5')
+    .transform((s) => parseInt(s, 10))
+    .pipe(z.number().int().positive().max(10)),
+  sessionsFilePath: z
+    .string()
+    .optional()
+    .default(DEFAULT_SESSIONS_FILE),
+  bookmarksFilePath: z
+    .string()
+    .optional()
+    .default(DEFAULT_BOOKMARKS_FILE),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -45,6 +74,9 @@ export function loadConfig(): AppConfig {
     logPath: process.env.LOG_PATH || undefined,
     claudeModel: process.env.CLAUDE_MODEL || undefined,
     sessionTimeoutMs: process.env.SESSION_TIMEOUT_MS || undefined,
+    maxSessions: process.env.MAX_SESSIONS || undefined,
+    sessionsFilePath: process.env.SESSIONS_FILE_PATH || undefined,
+    bookmarksFilePath: process.env.BOOKMARKS_FILE_PATH || undefined,
   });
 
   if (!result.success) {

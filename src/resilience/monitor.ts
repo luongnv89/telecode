@@ -3,14 +3,12 @@
  * and timeout enforcement.
  */
 
-import type { SessionManager } from '../claude/session-manager.js';
-import type { LockManager } from '../lock/manager.js';
+import type { SessionRegistry } from '../session/registry.js';
 import type { TelegramSender } from '../telegram/sender.js';
 import { createError } from '../types/envelope.js';
 
 export interface ResilienceMonitorDeps {
-  sessionManager: SessionManager;
-  lockManager: LockManager;
+  sessionRegistry: SessionRegistry;
   sender: TelegramSender;
   sessionTimeoutMs: number;
   checkIntervalMs?: number;
@@ -27,8 +25,7 @@ export interface ResilienceMonitor {
 
 export function createResilienceMonitor(deps: ResilienceMonitorDeps): ResilienceMonitor {
   const {
-    sessionManager,
-    lockManager,
+    sessionRegistry,
     sender,
     sessionTimeoutMs,
     checkIntervalMs = 30_000,
@@ -37,28 +34,35 @@ export function createResilienceMonitor(deps: ResilienceMonitorDeps): Resilience
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
   function checkSessionHealth(): void {
-    // Check for stale locks (session timeout)
-    if (lockManager.checkStale(sessionTimeoutMs)) {
-      const lockInfo = lockManager.getLockInfo();
-      if (lockInfo) {
-        console.warn(
-          `[resilience] Stale session detected: session ${lockInfo.sessionId} ` +
-          `for user ${lockInfo.userId} in chat ${lockInfo.chatId}`,
-        );
+    // Check all sessions for stale locks
+    for (const [sessionId, entry] of sessionRegistry.getAllEntries()) {
+      if (entry.lock.checkStale(sessionTimeoutMs)) {
+        const lockInfo = entry.lock.getLockInfo();
+        if (lockInfo) {
+          console.warn(
+            `[resilience] Stale session detected: session ${sessionId} ` +
+            `for user ${lockInfo.userId} in chat ${lockInfo.chatId}`,
+          );
 
-        // Notify the user that their session timed out
-        sender.sendResponse(lockInfo.chatId, createError(
-          'SESSION_TIMEOUT',
-          'Your session has timed out due to inactivity. Use /start_session to begin a new session.',
-        )).catch((err) => {
-          console.error(`[resilience] Failed to send timeout notification: ${err}`);
-        });
+          // Notify the user that their session timed out
+          sender.sendResponse(lockInfo.chatId, createError(
+            'SESSION_TIMEOUT',
+            `Session [${sessionId.slice(0, 8)}] timed out due to inactivity.`,
+          )).catch((err) => {
+            console.error(`[resilience] Failed to send timeout notification: ${err}`);
+          });
 
-        // Clean up: release lock and stop session
-        lockManager.forceRelease();
-        if (sessionManager.isActive()) {
-          sessionManager.stopSession().catch((err) => {
-            console.error(`[resilience] Failed to stop stale session: ${err}`);
+          // Clean up: release lock and stop session
+          entry.lock.forceRelease();
+          if (entry.manager.isActive()) {
+            entry.manager.stopSession().catch((err) => {
+              console.error(`[resilience] Failed to stop stale session: ${err}`);
+            });
+          }
+
+          // Remove from registry
+          sessionRegistry.removeSession(sessionId).catch((err) => {
+            console.error(`[resilience] Failed to remove stale session: ${err}`);
           });
         }
       }
@@ -85,7 +89,7 @@ export function createResilienceMonitor(deps: ResilienceMonitorDeps): Resilience
       try {
         await sender.sendResponse(chatId, createError(
           'INTERNAL_ERROR',
-          `⚠ AUDIT FAILURE: Log write failed — ${error.message}. Session audit trail may be incomplete.`,
+          `AUDIT FAILURE: Log write failed — ${error.message}. Session audit trail may be incomplete.`,
         ));
       } catch (sendErr) {
         console.error(`[resilience] Failed to send audit failure notification: ${sendErr}`);
@@ -95,9 +99,6 @@ export function createResilienceMonitor(deps: ResilienceMonitorDeps): Resilience
     async notifySessionCrash(chatId: number, error: Error): Promise<void> {
       console.error(`[resilience] Session crash detected: ${error.message}`);
       try {
-        // Clean up stale state
-        lockManager.forceRelease();
-
         await sender.sendResponse(chatId, createError(
           'CLAUDE_ERROR',
           `Session crashed: ${error.message}. Use /start_session to begin a new session.`,
