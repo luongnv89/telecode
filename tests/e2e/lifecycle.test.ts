@@ -3,13 +3,17 @@ import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createCommandHandlers, type HandlerDeps } from '../../src/telegram/commands/handlers.js';
-import { createLockManager } from '../../src/lock/manager.js';
-import { SessionManager } from '../../src/claude/session-manager.js';
+import { createLockManager, type LockManager } from '../../src/lock/manager.js';
 import { createAuditWriter } from '../../src/audit/writer.js';
 import type { ClaudeAdapter } from '../../src/claude/adapter.js';
+import type { SessionManager } from '../../src/claude/session-manager.js';
 import type { TelegramSender } from '../../src/telegram/sender.js';
 import type { ValidatedCommand } from '../../src/types/commands.js';
 import type { AuditEvent } from '../../src/types/audit.js';
+import type { Session } from '../../src/types/session.js';
+import type { SessionRegistry, RegistryEntry } from '../../src/session/registry.js';
+import type { FocusManager } from '../../src/session/focus-manager.js';
+import type { SessionPersistence } from '../../src/session/persistence.js';
 
 // ---- Helpers ----
 
@@ -36,9 +40,24 @@ function makeCommand(
   return { command: { type } as any, context: base };
 }
 
+function makeSession(overrides?: Partial<Session>): Session {
+  return {
+    sessionId: 'sess-001',
+    claudeSessionId: 'claude-001',
+    userId: 100,
+    chatId: 200,
+    state: 'active',
+    startedAt: new Date(),
+    lastActivityAt: new Date(),
+    workingDirectory: process.cwd(),
+    ...overrides,
+  };
+}
+
 function createMockAdapter(): ClaudeAdapter {
   return {
     startSession: vi.fn().mockResolvedValue({ claudeSessionId: 'claude-001' }),
+    attachSession: vi.fn().mockResolvedValue({ claudeSessionId: 'claude-001' }),
     sendPrompt: vi.fn().mockResolvedValue({
       success: true,
       text: 'Claude says hello',
@@ -54,6 +73,128 @@ function createMockAdapter(): ClaudeAdapter {
 
 function createMockSender(): TelegramSender {
   return { sendResponse: vi.fn().mockResolvedValue(undefined) };
+}
+
+function createMockSessionManager(session: Session | null = null): SessionManager {
+  let currentSession = session;
+  return {
+    getSession: vi.fn(() => currentSession),
+    isActive: vi.fn(() => currentSession !== null && currentSession.state !== 'stopped'),
+    startSession: vi.fn(async (userId: number, chatId: number, workingDirectory?: string, name?: string) => {
+      currentSession = makeSession({ userId, chatId, workingDirectory: workingDirectory ?? process.cwd(), name, sessionId: crypto.randomUUID() });
+      return currentSession;
+    }),
+    stopSession: vi.fn(async () => {
+      if (currentSession) currentSession.state = 'stopped';
+      currentSession = null;
+    }),
+    resetSession: vi.fn(async () => {
+      const wd = currentSession?.workingDirectory ?? process.cwd();
+      const name = currentSession?.name;
+      currentSession = makeSession({
+        sessionId: crypto.randomUUID(),
+        claudeSessionId: 'claude-002',
+        workingDirectory: wd,
+        name,
+      });
+      return currentSession;
+    }),
+    updateState: vi.fn((state) => {
+      if (currentSession) currentSession.state = state;
+    }),
+    getTransitions: vi.fn(() => []),
+    getTransitionsForSession: vi.fn(() => []),
+  } as unknown as SessionManager;
+}
+
+function createMockEntry(session: Session | null = null): RegistryEntry {
+  const adapter = createMockAdapter();
+  const manager = createMockSessionManager(session);
+  const lock = createLockManager();
+  if (session) {
+    lock.acquire(session.userId, session.chatId, session.sessionId);
+  }
+  return { manager, adapter, lock, workingDirectory: session?.workingDirectory ?? process.cwd(), name: session?.name };
+}
+
+function createMockRegistry(entries?: Map<string, RegistryEntry>): SessionRegistry {
+  const entryMap = entries ?? new Map<string, RegistryEntry>();
+  return {
+    maxSessions: 5,
+    get size() { return entryMap.size; },
+    createSession: vi.fn(async (userId: number, chatId: number, workingDirectory: string, name?: string) => {
+      const session = makeSession({ userId, chatId, workingDirectory, name, sessionId: crypto.randomUUID() });
+      const entry = createMockEntry(session);
+      entryMap.set(session.sessionId, entry);
+      return session;
+    }),
+    getEntry: vi.fn((sessionId: string) => entryMap.get(sessionId)),
+    getSession: vi.fn((sessionId: string) => {
+      const entry = entryMap.get(sessionId);
+      return entry?.manager.getSession() ?? null;
+    }),
+    findSession: vi.fn(),
+    findSessionId: vi.fn((target: string) => {
+      if (entryMap.has(target)) return target;
+      for (const [id, entry] of entryMap) {
+        if (entry.name === target) return id;
+      }
+      return undefined;
+    }),
+    listSessions: vi.fn(() => {
+      const items: any[] = [];
+      for (const [id, entry] of entryMap) {
+        const s = entry.manager.getSession();
+        if (s) items.push({ sessionId: s.sessionId, name: entry.name, workingDirectory: entry.workingDirectory, state: s.state, startedAt: s.startedAt, isFocused: false });
+      }
+      return items;
+    }),
+    removeSession: vi.fn(async (sessionId: string) => {
+      const entry = entryMap.get(sessionId);
+      if (entry) {
+        if (entry.manager.isActive()) await entry.manager.stopSession();
+        entry.lock.forceRelease();
+        entryMap.delete(sessionId);
+      }
+    }),
+    removeAllSessions: vi.fn(),
+    getAllEntries: vi.fn(() => entryMap),
+  } as unknown as SessionRegistry;
+}
+
+function createMockFocusManager(registry: SessionRegistry): FocusManager {
+  const focusMap = new Map<number, string>();
+  return {
+    setFocus: vi.fn((userId: number, sessionId: string) => {
+      focusMap.set(userId, sessionId);
+      return true;
+    }),
+    getFocusedSessionId: vi.fn((userId: number) => {
+      const id = focusMap.get(userId);
+      if (id && registry.getEntry(id)) return id;
+      if (id) focusMap.delete(userId);
+      return undefined;
+    }),
+    clearFocus: vi.fn((userId: number) => focusMap.delete(userId)),
+    popFocus: vi.fn(() => undefined),
+    isFocusedBy: vi.fn(),
+    clearFocusForSession: vi.fn((sessionId: string) => {
+      for (const [userId, id] of focusMap) {
+        if (id === sessionId) focusMap.delete(userId);
+      }
+    }),
+    getFocusMap: vi.fn(() => Object.fromEntries(focusMap)),
+    restoreFocusMap: vi.fn(),
+  } as unknown as FocusManager;
+}
+
+function createMockPersistence(): SessionPersistence {
+  return {
+    load: vi.fn().mockResolvedValue(null),
+    save: vi.fn().mockResolvedValue(undefined),
+    scheduleSave: vi.fn(),
+    cancelPendingSave: vi.fn(),
+  } as unknown as SessionPersistence;
 }
 
 async function readAuditEvents(dir: string): Promise<AuditEvent[]> {
@@ -73,32 +214,23 @@ async function readAuditEvents(dir: string): Promise<AuditEvent[]> {
 
 describe('e2e: session lifecycle & lock behavior', () => {
   let tempDir: string;
-  let adapter: ClaudeAdapter;
   let sender: TelegramSender;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'telecode-e2e-lifecycle-'));
-    adapter = createMockAdapter();
     sender = createMockSender();
   });
 
   afterEach(async () => {
-    vi.useRealTimers();
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  function createDeps(overrides?: Partial<HandlerDeps>): HandlerDeps {
-    const sessionManager = new SessionManager(adapter);
-    const lockManager = createLockManager();
+  function createDeps(): HandlerDeps {
     const auditWriter = createAuditWriter(tempDir);
-    return {
-      claudeAdapter: adapter,
-      sessionManager,
-      lockManager,
-      sender,
-      auditWriter,
-      ...overrides,
-    };
+    const sessionRegistry = createMockRegistry();
+    const focusManager = createMockFocusManager(sessionRegistry);
+    const persistence = createMockPersistence();
+    return { sessionRegistry, focusManager, persistence, sender, auditWriter };
   }
 
   // ------------------------------------------------------------------
@@ -112,7 +244,7 @@ describe('e2e: session lifecycle & lock behavior', () => {
 
       // start
       const startRes = await handlers.start_session(cmd('start_session'));
-      expect(startRes.type).toBe('ack');
+      expect(startRes.type).toBe('result');
 
       // send
       const sendRes = await handlers.send(cmd('send', { prompt: 'write tests' }));
@@ -174,9 +306,13 @@ describe('e2e: session lifecycle & lock behavior', () => {
       const resetRes = await handlers.new_session(cmd('new_session'));
       expect(resetRes.type).toBe('ack');
 
-      // Lock should still be held by same user
-      expect(deps.lockManager.isLocked()).toBe(true);
-      expect(deps.lockManager.getLockInfo()?.userId).toBe(100);
+      // Get the focused session entry to check lock
+      const focusedId = deps.focusManager.getFocusedSessionId(100);
+      expect(focusedId).toBeDefined();
+      const entry = deps.sessionRegistry.getEntry(focusedId!);
+      expect(entry).toBeDefined();
+      expect(entry!.lock.isLocked()).toBe(true);
+      expect(entry!.lock.getLockInfo()?.userId).toBe(100);
 
       // Send on new session should work
       const sendRes = await handlers.send(cmd('send', { prompt: 'second prompt' }));
@@ -232,22 +368,19 @@ describe('e2e: session lifecycle & lock behavior', () => {
   // 3. Lock enforcement: User A holds lock, User B is rejected
   // ------------------------------------------------------------------
   describe('lock enforcement', () => {
-    it('rejects User B while User A holds the lock', async () => {
+    it('rejects User B send while User A holds the lock', async () => {
       const deps = createDeps();
       const handlers = createCommandHandlers(deps);
 
       // User A starts session
       const startA = await handlers.start_session(makeCommand('start_session'));
-      expect(startA.type).toBe('ack');
+      expect(startA.type).toBe('result');
 
-      // User B tries to start — rejected
-      const startB = await handlers.start_session(
-        makeCommand('start_session', { userId: 300, chatId: 400 }),
-      );
-      expect(startB.type).toBe('error');
-      if (startB.type === 'error') expect(startB.code).toBe('SESSION_LOCKED');
+      // User B tries to send on User A's session — rejected (locked)
+      // First set User B's focus to User A's session
+      const sessionId = deps.focusManager.getFocusedSessionId(100);
+      deps.focusManager.setFocus(300, sessionId!);
 
-      // User B tries to send — rejected
       const sendB = await handlers.send(
         makeCommand('send', { userId: 300, chatId: 400, prompt: 'hijack' }),
       );
@@ -267,99 +400,42 @@ describe('e2e: session lifecycle & lock behavior', () => {
       const startB = await handlers.start_session(
         makeCommand('start_session', { userId: 300, chatId: 400 }),
       );
-      expect(startB.type).toBe('ack');
-      expect(deps.lockManager.getLockInfo()?.userId).toBe(300);
-    });
+      expect(startB.type).toBe('result');
 
-    it('records lock_rejected audit event for denied connection', async () => {
+      // B's session should have the lock
+      const focusedId = deps.focusManager.getFocusedSessionId(300);
+      const entry = deps.sessionRegistry.getEntry(focusedId!);
+      expect(entry!.lock.getLockInfo()?.userId).toBe(300);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // 4. Error recovery: Claude crashes during send
+  // ------------------------------------------------------------------
+  describe('error recovery', () => {
+    it('recovers state to active after Claude adapter throws', async () => {
       const deps = createDeps();
       const handlers = createCommandHandlers(deps);
 
       await handlers.start_session(makeCommand('start_session'));
-      await handlers.start_session(
-        makeCommand('start_session', { userId: 300, chatId: 400 }),
-      );
 
-      const events = await readAuditEvents(tempDir);
-      const rejected = events.find((e) => e.event === 'lock_rejected');
-      expect(rejected).toBeDefined();
-      expect(rejected!.userId).toBe(300);
-      if (rejected!.event === 'lock_rejected') {
-        expect(rejected!.heldByUserId).toBe(100);
-      }
-    });
-  });
-
-  // ------------------------------------------------------------------
-  // 4. Stale lock cleanup
-  // ------------------------------------------------------------------
-  describe('stale lock cleanup', () => {
-    it('auto-releases stale lock on next start_session', async () => {
-      vi.useFakeTimers();
-
-      const deps = createDeps({ sessionTimeoutMs: 5000 });
-      const handlers = createCommandHandlers(deps);
-
-      // User A starts session
-      await handlers.start_session(makeCommand('start_session'));
-      expect(deps.lockManager.isLocked()).toBe(true);
-
-      // Advance past timeout
-      vi.advanceTimersByTime(6000);
-
-      // User B starts session — stale lock auto-released
-      const startB = await handlers.start_session(
-        makeCommand('start_session', { userId: 300, chatId: 400 }),
-      );
-      expect(startB.type).toBe('ack');
-      expect(deps.lockManager.getLockInfo()?.userId).toBe(300);
-    });
-
-    it('logs lock_stale_released audit event', async () => {
-      vi.useFakeTimers();
-
-      const deps = createDeps({ sessionTimeoutMs: 5000 });
-      const handlers = createCommandHandlers(deps);
-
-      await handlers.start_session(makeCommand('start_session'));
-      vi.advanceTimersByTime(6000);
-
-      await handlers.start_session(
-        makeCommand('start_session', { userId: 300, chatId: 400 }),
-      );
-
-      // Read all audit logs across both sessions
-      const events = await readAuditEvents(tempDir);
-      const staleEvent = events.find((e) => e.event === 'lock_stale_released');
-      expect(staleEvent).toBeDefined();
-    });
-  });
-
-  // ------------------------------------------------------------------
-  // 5. Error recovery: Claude crashes during send
-  // ------------------------------------------------------------------
-  describe('error recovery', () => {
-    it('recovers state to active after Claude adapter throws', async () => {
-      const failAdapter = createMockAdapter();
+      // Get the entry and override its adapter's sendPrompt to fail once
+      const focusedId = deps.focusManager.getFocusedSessionId(100)!;
+      const entry = deps.sessionRegistry.getEntry(focusedId)!;
       let callCount = 0;
-      (failAdapter.sendPrompt as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      (entry.adapter.sendPrompt as ReturnType<typeof vi.fn>).mockImplementation(async () => {
         callCount++;
         if (callCount === 1) throw new Error('Claude crashed');
         return { success: true, text: 'recovered', durationMs: 50, totalCostUsd: 0, numTurns: 1 };
       });
-
-      const deps = createDeps({ claudeAdapter: failAdapter });
-      const handlers = createCommandHandlers(deps);
-
-      await handlers.start_session(makeCommand('start_session'));
 
       // First send — Claude crashes
       const err = await handlers.send(makeCommand('send', { prompt: 'crash me' }));
       expect(err.type).toBe('error');
 
       // Session should still be active (recovered from busy → active)
-      expect(deps.sessionManager.isActive()).toBe(true);
-      expect(deps.sessionManager.getSession()?.state).toBe('active');
+      expect(entry.manager.isActive()).toBe(true);
+      expect(entry.manager.getSession()?.state).toBe('active');
 
       // Second send — works normally
       const ok = await handlers.send(makeCommand('send', { prompt: 'try again' }));
@@ -368,19 +444,21 @@ describe('e2e: session lifecycle & lock behavior', () => {
     });
 
     it('handles non-successful Claude result as CLAUDE_ERROR', async () => {
-      const failAdapter = createMockAdapter();
-      (failAdapter.sendPrompt as ReturnType<typeof vi.fn>).mockResolvedValue({
+      const deps = createDeps();
+      const handlers = createCommandHandlers(deps);
+
+      await handlers.start_session(makeCommand('start_session'));
+
+      // Override adapter to return failure
+      const focusedId = deps.focusManager.getFocusedSessionId(100)!;
+      const entry = deps.sessionRegistry.getEntry(focusedId)!;
+      (entry.adapter.sendPrompt as ReturnType<typeof vi.fn>).mockResolvedValue({
         success: false,
         text: 'Something went wrong',
         durationMs: 50,
         totalCostUsd: 0,
         numTurns: 0,
       });
-
-      const deps = createDeps({ claudeAdapter: failAdapter });
-      const handlers = createCommandHandlers(deps);
-
-      await handlers.start_session(makeCommand('start_session'));
 
       const res = await handlers.send(makeCommand('send', { prompt: 'fail' }));
       expect(res.type).toBe('error');

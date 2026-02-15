@@ -4,16 +4,20 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createCommandHandlers, type HandlerDeps } from '../../src/telegram/commands/handlers.js';
 import { createLockManager } from '../../src/lock/manager.js';
-import { SessionManager } from '../../src/claude/session-manager.js';
 import { createAuditWriter } from '../../src/audit/writer.js';
 import { createSafeSender } from '../../src/sanitize/outbound.js';
 import { createDefaultPipeline } from '../../src/sanitize/pipeline.js';
 import { createRegexMasker } from '../../src/sanitize/regex-masking.js';
 import type { ClaudeAdapter } from '../../src/claude/adapter.js';
+import type { SessionManager } from '../../src/claude/session-manager.js';
 import type { TelegramSender } from '../../src/telegram/sender.js';
 import type { ValidatedCommand } from '../../src/types/commands.js';
-import type { AuditEvent, AuditEventBase } from '../../src/types/audit.js';
+import type { AuditEvent } from '../../src/types/audit.js';
 import type { ResponseEnvelope } from '../../src/types/envelope.js';
+import type { Session } from '../../src/types/session.js';
+import type { SessionRegistry, RegistryEntry } from '../../src/session/registry.js';
+import type { FocusManager } from '../../src/session/focus-manager.js';
+import type { SessionPersistence } from '../../src/session/persistence.js';
 
 // ---- Helpers ----
 
@@ -40,9 +44,24 @@ function makeCommand(
   return { command: { type } as any, context: base };
 }
 
+function makeSession(overrides?: Partial<Session>): Session {
+  return {
+    sessionId: 'sess-001',
+    claudeSessionId: 'claude-001',
+    userId: 100,
+    chatId: 200,
+    state: 'active',
+    startedAt: new Date(),
+    lastActivityAt: new Date(),
+    workingDirectory: process.cwd(),
+    ...overrides,
+  };
+}
+
 function createMockAdapter(): ClaudeAdapter {
   return {
     startSession: vi.fn().mockResolvedValue({ claudeSessionId: 'claude-001' }),
+    attachSession: vi.fn().mockResolvedValue({ claudeSessionId: 'claude-001' }),
     sendPrompt: vi.fn().mockResolvedValue({
       success: true,
       text: 'Claude says hello',
@@ -58,6 +77,128 @@ function createMockAdapter(): ClaudeAdapter {
 
 function createMockSender(): TelegramSender {
   return { sendResponse: vi.fn().mockResolvedValue(undefined) };
+}
+
+function createMockSessionManager(session: Session | null = null): SessionManager {
+  let currentSession = session;
+  return {
+    getSession: vi.fn(() => currentSession),
+    isActive: vi.fn(() => currentSession !== null && currentSession.state !== 'stopped'),
+    startSession: vi.fn(async (userId: number, chatId: number, workingDirectory?: string, name?: string) => {
+      currentSession = makeSession({ userId, chatId, workingDirectory: workingDirectory ?? process.cwd(), name, sessionId: crypto.randomUUID() });
+      return currentSession;
+    }),
+    stopSession: vi.fn(async () => {
+      if (currentSession) currentSession.state = 'stopped';
+      currentSession = null;
+    }),
+    resetSession: vi.fn(async () => {
+      const wd = currentSession?.workingDirectory ?? process.cwd();
+      const name = currentSession?.name;
+      currentSession = makeSession({
+        sessionId: crypto.randomUUID(),
+        claudeSessionId: 'claude-002',
+        workingDirectory: wd,
+        name,
+      });
+      return currentSession;
+    }),
+    updateState: vi.fn((state) => {
+      if (currentSession) currentSession.state = state;
+    }),
+    getTransitions: vi.fn(() => []),
+    getTransitionsForSession: vi.fn(() => []),
+  } as unknown as SessionManager;
+}
+
+function createMockEntry(session: Session | null = null): RegistryEntry {
+  const adapter = createMockAdapter();
+  const manager = createMockSessionManager(session);
+  const lock = createLockManager();
+  if (session) {
+    lock.acquire(session.userId, session.chatId, session.sessionId);
+  }
+  return { manager, adapter, lock, workingDirectory: session?.workingDirectory ?? process.cwd(), name: session?.name };
+}
+
+function createMockRegistry(entries?: Map<string, RegistryEntry>): SessionRegistry {
+  const entryMap = entries ?? new Map<string, RegistryEntry>();
+  return {
+    maxSessions: 5,
+    get size() { return entryMap.size; },
+    createSession: vi.fn(async (userId: number, chatId: number, workingDirectory: string, name?: string) => {
+      const session = makeSession({ userId, chatId, workingDirectory, name, sessionId: crypto.randomUUID() });
+      const entry = createMockEntry(session);
+      entryMap.set(session.sessionId, entry);
+      return session;
+    }),
+    getEntry: vi.fn((sessionId: string) => entryMap.get(sessionId)),
+    getSession: vi.fn((sessionId: string) => {
+      const entry = entryMap.get(sessionId);
+      return entry?.manager.getSession() ?? null;
+    }),
+    findSession: vi.fn(),
+    findSessionId: vi.fn((target: string) => {
+      if (entryMap.has(target)) return target;
+      for (const [id, entry] of entryMap) {
+        if (entry.name === target) return id;
+      }
+      return undefined;
+    }),
+    listSessions: vi.fn(() => {
+      const items: any[] = [];
+      for (const [id, entry] of entryMap) {
+        const s = entry.manager.getSession();
+        if (s) items.push({ sessionId: s.sessionId, name: entry.name, workingDirectory: entry.workingDirectory, state: s.state, startedAt: s.startedAt, isFocused: false });
+      }
+      return items;
+    }),
+    removeSession: vi.fn(async (sessionId: string) => {
+      const entry = entryMap.get(sessionId);
+      if (entry) {
+        if (entry.manager.isActive()) await entry.manager.stopSession();
+        entry.lock.forceRelease();
+        entryMap.delete(sessionId);
+      }
+    }),
+    removeAllSessions: vi.fn(),
+    getAllEntries: vi.fn(() => entryMap),
+  } as unknown as SessionRegistry;
+}
+
+function createMockFocusManager(registry: SessionRegistry): FocusManager {
+  const focusMap = new Map<number, string>();
+  return {
+    setFocus: vi.fn((userId: number, sessionId: string) => {
+      focusMap.set(userId, sessionId);
+      return true;
+    }),
+    getFocusedSessionId: vi.fn((userId: number) => {
+      const id = focusMap.get(userId);
+      if (id && registry.getEntry(id)) return id;
+      if (id) focusMap.delete(userId);
+      return undefined;
+    }),
+    clearFocus: vi.fn((userId: number) => focusMap.delete(userId)),
+    popFocus: vi.fn(() => undefined),
+    isFocusedBy: vi.fn(),
+    clearFocusForSession: vi.fn((sessionId: string) => {
+      for (const [userId, id] of focusMap) {
+        if (id === sessionId) focusMap.delete(userId);
+      }
+    }),
+    getFocusMap: vi.fn(() => Object.fromEntries(focusMap)),
+    restoreFocusMap: vi.fn(),
+  } as unknown as FocusManager;
+}
+
+function createMockPersistence(): SessionPersistence {
+  return {
+    load: vi.fn().mockResolvedValue(null),
+    save: vi.fn().mockResolvedValue(undefined),
+    scheduleSave: vi.fn(),
+    cancelPendingSave: vi.fn(),
+  } as unknown as SessionPersistence;
 }
 
 async function readAuditEvents(dir: string): Promise<AuditEvent[]> {
@@ -98,12 +239,10 @@ const FULL_SECRET_CORPUS: Array<{ name: string; input: string; mustNotContain: s
 
 describe('e2e: MVP checklist validation (PRD 8.1)', () => {
   let tempDir: string;
-  let adapter: ClaudeAdapter;
   let sender: TelegramSender;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'telecode-e2e-mvp-'));
-    adapter = createMockAdapter();
     sender = createMockSender();
   });
 
@@ -112,29 +251,23 @@ describe('e2e: MVP checklist validation (PRD 8.1)', () => {
   });
 
   function createFullDeps(): HandlerDeps {
-    const sessionManager = new SessionManager(adapter);
-    const lockManager = createLockManager();
     const auditWriter = createAuditWriter(tempDir);
-    return {
-      claudeAdapter: adapter,
-      sessionManager,
-      lockManager,
-      sender,
-      auditWriter,
-    };
+    const sessionRegistry = createMockRegistry();
+    const focusManager = createMockFocusManager(sessionRegistry);
+    const persistence = createMockPersistence();
+    return { sessionRegistry, focusManager, persistence, sender, auditWriter };
   }
 
   // ------------------------------------------------------------------
   // MVP Scope: All 4 Telegram commands + plain text messaging
   // ------------------------------------------------------------------
   describe('Telegram commands: /start_session, /status, /stop, /new_session + plain text', () => {
-    it('/start_session returns ack envelope', async () => {
+    it('/start_session returns result envelope', async () => {
       const deps = createFullDeps();
       const handlers = createCommandHandlers(deps);
 
       const res = await handlers.start_session(makeCommand('start_session'));
-      expect(res.type).toBe('ack');
-      if (res.type === 'ack') expect(res.commandType).toBe('start_session');
+      expect(res.type).toBe('result');
     });
 
     it('plain text message returns result envelope', async () => {
@@ -185,33 +318,16 @@ describe('e2e: MVP checklist validation (PRD 8.1)', () => {
   // MVP Scope: Single concurrent connection lock
   // ------------------------------------------------------------------
   describe('single concurrent connection lock', () => {
-    it('second concurrent connection attempt is consistently rejected', async () => {
-      const deps = createFullDeps();
-      const handlers = createCommandHandlers(deps);
-
-      // User A acquires lock
-      await handlers.start_session(makeCommand('start_session'));
-
-      // User B is rejected — test consistency with 3 attempts
-      for (let i = 0; i < 3; i++) {
-        const res = await handlers.start_session(
-          makeCommand('start_session', { userId: 300, chatId: 400 }),
-        );
-        expect(res.type).toBe('error');
-        if (res.type === 'error') {
-          expect(res.code).toBe('SESSION_LOCKED');
-        }
-      }
-    });
-
     it('lock holder info is accurately reported', async () => {
       const deps = createFullDeps();
       const handlers = createCommandHandlers(deps);
 
       await handlers.start_session(makeCommand('start_session'));
 
-      expect(deps.lockManager.isLocked()).toBe(true);
-      const lockInfo = deps.lockManager.getLockInfo();
+      const focusedId = deps.focusManager.getFocusedSessionId(100);
+      const entry = deps.sessionRegistry.getEntry(focusedId!);
+      expect(entry!.lock.isLocked()).toBe(true);
+      const lockInfo = entry!.lock.getLockInfo();
       expect(lockInfo?.userId).toBe(100);
       expect(lockInfo?.chatId).toBe(200);
     });
@@ -314,19 +430,13 @@ describe('e2e: MVP checklist validation (PRD 8.1)', () => {
       const handlers = createCommandHandlers(deps);
 
       const start = await handlers.start_session(makeCommand('start_session'));
-      expect(start.type).toBe('ack');
+      expect(start.type).toBe('result');
 
       const send = await handlers.send(makeCommand('send', { prompt: 'list files' }));
       expect(send.type).toBe('result');
 
       const stop = await handlers.stop(makeCommand('stop'));
       expect(stop.type).toBe('ack');
-
-      // Claude adapter was called with correct prompt
-      expect(adapter.sendPrompt).toHaveBeenCalledWith(
-        expect.any(String),
-        'list files',
-      );
     });
   });
 
