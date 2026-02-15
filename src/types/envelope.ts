@@ -16,11 +16,16 @@ export type ErrorCode =
   | 'ATTACH_FAILED'
   | 'INTERNAL_ERROR';
 
+export interface EnvelopeMetadata {
+  showButtons?: boolean;
+  buttonStyle?: 'full' | 'status-only';
+}
+
 export type ResponseEnvelope =
-  | { type: 'ack'; commandType: string; timestamp: Date }
-  | { type: 'progress'; text: string; timestamp: Date }
-  | { type: 'result'; text: string; timestamp: Date }
-  | { type: 'error'; code: ErrorCode; message: string; timestamp: Date }
+  | { type: 'ack'; commandType: string; timestamp: Date; metadata?: EnvelopeMetadata }
+  | { type: 'progress'; text: string; timestamp: Date; metadata?: EnvelopeMetadata }
+  | { type: 'result'; text: string; timestamp: Date; metadata?: EnvelopeMetadata }
+  | { type: 'error'; code: ErrorCode; message: string; timestamp: Date; metadata?: EnvelopeMetadata }
   | {
       type: 'status';
       sessionActive: boolean;
@@ -30,18 +35,19 @@ export type ResponseEnvelope =
       locked?: boolean;
       lockOwnerUserId?: number;
       timestamp: Date;
+      metadata?: EnvelopeMetadata;
     };
 
-export function createAck(commandType: string): ResponseEnvelope {
-  return { type: 'ack', commandType, timestamp: new Date() };
+export function createAck(commandType: string, metadata?: EnvelopeMetadata): ResponseEnvelope {
+  return { type: 'ack', commandType, timestamp: new Date(), metadata };
 }
 
-export function createProgress(text: string): ResponseEnvelope {
-  return { type: 'progress', text, timestamp: new Date() };
+export function createProgress(text: string, metadata?: EnvelopeMetadata): ResponseEnvelope {
+  return { type: 'progress', text, timestamp: new Date(), metadata };
 }
 
-export function createResult(text: string): ResponseEnvelope {
-  return { type: 'result', text, timestamp: new Date() };
+export function createResult(text: string, metadata?: EnvelopeMetadata): ResponseEnvelope {
+  return { type: 'result', text, timestamp: new Date(), metadata };
 }
 
 export function createError(code: ErrorCode, message: string): ResponseEnvelope {
@@ -55,6 +61,6 @@ export function createStatus(info: {
   uptime?: number;
   locked?: boolean;
   lockOwnerUserId?: number;
-}): ResponseEnvelope {
-  return { type: 'status', ...info, timestamp: new Date() };
+}, metadata?: EnvelopeMetadata): ResponseEnvelope {
+  return { type: 'status', ...info, timestamp: new Date(), metadata };
 }

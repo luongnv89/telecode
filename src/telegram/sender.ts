@@ -1,5 +1,7 @@
 import type { Bot } from 'grammy';
+import type { InlineKeyboard } from 'grammy';
 import type { ResponseEnvelope } from '../types/index.js';
+import { getKeyboardForEnvelope } from './keyboards.js';
 
 const MAX_MESSAGE_LENGTH = 4096;
 const MAX_RETRIES = 3;
@@ -49,12 +51,14 @@ async function sendWithRetry(
   bot: Bot,
   chatId: number,
   text: string,
+  keyboard?: InlineKeyboard,
 ): Promise<void> {
   let lastError: unknown;
+  const options = keyboard ? { reply_markup: keyboard } : undefined;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      await bot.api.sendMessage(chatId, text);
+      await bot.api.sendMessage(chatId, text, options);
       return;
     } catch (err) {
       lastError = err;
@@ -72,7 +76,8 @@ export function createTelegramSender(bot: Bot): TelegramSender {
   return {
     async sendResponse(chatId: number, envelope: ResponseEnvelope): Promise<void> {
       const text = truncateMessage(formatEnvelope(envelope));
-      await sendWithRetry(bot, chatId, text);
+      const keyboard = getKeyboardForEnvelope(envelope);
+      await sendWithRetry(bot, chatId, text, keyboard);
     },
   };
 }

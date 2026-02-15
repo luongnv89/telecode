@@ -139,6 +139,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         return createResult(
           `Session${displayName} started [${shortId}] in ${workingDir}\n` +
           `Sessions: ${sessionRegistry.size}/${sessionRegistry.maxSessions}`,
+          { showButtons: true },
         );
       } catch (err) {
         return handleError(err);
@@ -213,7 +214,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           return createError('CLAUDE_ERROR', result.text);
         }
 
-        return createResult(result.text);
+        return createResult(result.text, { showButtons: true });
       } catch (err) {
         // Recover state on error
         const sessionId = focusManager.getFocusedSessionId(cmd.context.userId);
@@ -258,7 +259,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           uptime: session ? Date.now() - session.startedAt.getTime() : undefined,
           locked: entry.lock.isLocked(),
           lockOwnerUserId: lockInfo?.userId,
-        });
+        }, { showButtons: true, buttonStyle: 'status-only' });
       } catch (err) {
         return handleError(err);
       }
@@ -467,7 +468,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
         schedulePersist();
 
-        return createAck('new_session');
+        return createAck('new_session', { showButtons: true, buttonStyle: 'status-only' });
       } catch (err) {
         return handleError(err);
       }
@@ -497,7 +498,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           lines.join('\n') +
           '\n\n> = focused session';
 
-        return createResult(text);
+        return createResult(text, { showButtons: true });
       } catch (err) {
         return handleError(err);
       }
