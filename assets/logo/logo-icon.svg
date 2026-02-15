@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Shadow layer for depth -->
+  <rect x="20" y="22" width="476" height="476" rx="96" fill="#1A1A1A" opacity="0.35"/>
+  <!-- Main rounded square - Black -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="#0A0A0A"/>
+  <!-- Inner border - Gray for depth -->
+  <rect x="18" y="18" width="476" height="476" rx="94" fill="none" stroke="#2A2A2A" stroke-width="1.5"/>
+  <!-- Outer border - Bright Green highlight line -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#00E676" stroke-width="2.5"/>
+
+  <g transform="translate(256,256)">
+    <path d="M-55,-75 L-110,0 L-55,75" stroke="#00E676" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M18,-75 L-18,75" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"/>
+    <path d="M55,-75 L110,0 L55,75" stroke="#00E676" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M125,-18 L152,0 L125,18" stroke="#888888" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

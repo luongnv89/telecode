@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Outer shadow ring for depth -->
+  <circle cx="256" cy="260" r="220" fill="#1A1A1A" opacity="0.4"/>
+  <!-- Main circle - Black background -->
+  <circle cx="256" cy="256" r="220" fill="#0A0A0A"/>
+  <!-- Subtle inner border ring - Gray -->
+  <circle cx="256" cy="256" r="218" fill="none" stroke="#333333" stroke-width="1.5"/>
+  <!-- Outer border - Bright Green highlight -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#00E676" stroke-width="2.5"/>
+
+  <g transform="translate(256,256)">
+    <!-- Left angle bracket - Bright Green highlight -->
+    <path d="M-55,-75 L-110,0 L-55,75" stroke="#00E676" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Forward slash - White -->
+    <path d="M18,-75 L-18,75" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"/>
+    <!-- Right angle bracket - Bright Green highlight -->
+    <path d="M55,-75 L110,0 L55,75" stroke="#00E676" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Send arrow accent - Gray, subtle depth -->
+    <path d="M125,-18 L152,0 L125,18" stroke="#888888" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

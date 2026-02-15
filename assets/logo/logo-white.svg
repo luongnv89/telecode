@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 140" fill="none">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@600');
+    .wordmark { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: 600; font-size: 64px; }
+  </style>
+
+  <!-- For dark backgrounds - white text, green highlights -->
+
+  <!-- Mark -->
+  <g transform="translate(70,70)">
+    <circle cx="0" cy="0" r="44" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+    <path d="M-12,-18 L-24,0 L-12,18" stroke="#00E676" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M3.5,-18 L-3.5,18" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+    <path d="M12,-18 L24,0 L12,18" stroke="#00E676" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M28,-4.5 L34,0 L28,4.5" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+
+  <!-- Divider -->
+  <line x1="135" y1="30" x2="135" y2="110" stroke="#555555" stroke-width="1"/>
+
+  <!-- Wordmark -->
+  <text x="155" y="90" class="wordmark">
+    <tspan fill="#FFFFFF">tele</tspan><tspan fill="#00E676">code</tspan>
+  </text>
+</svg>
