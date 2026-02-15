@@ -1,4 +1,3 @@
-import { userInfo } from 'node:os';
 import { TelecodeError } from '../types/errors.js';
 
 // ---------------------------------------------------------------------------
@@ -9,8 +8,7 @@ export type SanitizeCategory =
   | 'api_key'
   | 'bearer_token'
   | 'password'
-  | 'secret'
-  | 'path';
+  | 'secret';
 
 export interface SanitizeResult {
   text: string;
@@ -130,45 +128,6 @@ function createPasswordHandler(): CategoryHandler {
   };
 }
 
-function createPathHandler(): CategoryHandler {
-  // Detect the current macOS username so we can redact personal home paths.
-  let username: string;
-  try {
-    username = userInfo().username;
-  } catch {
-    username = '';
-  }
-
-  // Build patterns dynamically.
-  // 1. /Users/<username>/...  (macOS home directories)
-  // 2. ~/...                  (home shorthand)
-  const patterns: RegExp[] = [];
-  if (username) {
-    // Escaped username for regex safety (in case of special chars)
-    const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    patterns.push(new RegExp(`/Users/${escaped}(/[^\\s"'\`]*)`, 'g'));
-  }
-  patterns.push(/~(\/[^\s"'`]*)/g);
-
-  return {
-    category: 'path',
-    detect(text: string): RegExpMatchArray[] {
-      const allMatches: RegExpMatchArray[] = [];
-      for (const p of patterns) {
-        allMatches.push(...text.matchAll(p));
-      }
-      return allMatches;
-    },
-    mask(text: string): string {
-      let result = text;
-      for (const p of patterns) {
-        result = result.replace(p, '[REDACTED:path]');
-      }
-      return result;
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -178,6 +137,5 @@ export function createDefaultPipeline(): SanitizationPipeline {
     createApiKeyHandler(),
     createBearerTokenHandler(),
     createPasswordHandler(),
-    createPathHandler(),
   ]);
 }

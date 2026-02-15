@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import { userInfo } from 'node:os';
 import {
   SanitizationPipeline,
   createDefaultPipeline,
@@ -288,66 +287,16 @@ describe('Password handler', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Path handler
-// ---------------------------------------------------------------------------
-describe('Path handler', () => {
-  const pipeline = createDefaultPipeline();
-  const username = userInfo().username;
-
-  it('redacts /Users/<username>/... paths', () => {
-    const result = pipeline.sanitize(
-      `Reading file /Users/${username}/Documents/secrets.txt`,
-    );
-
-    expect(result.text).toBe('Reading file [REDACTED:path]');
-    expect(result.categories).toContain('path');
-  });
-
-  it('redacts ~/... paths', () => {
-    const result = pipeline.sanitize('Config at ~/.ssh/id_rsa');
-
-    expect(result.text).toBe('Config at [REDACTED:path]');
-    expect(result.categories).toContain('path');
-  });
-
-  it('redacts multiple paths', () => {
-    const result = pipeline.sanitize(
-      `Copied /Users/${username}/a to ~/b`,
-    );
-
-    expect(result.text).toBe('Copied [REDACTED:path] to [REDACTED:path]');
-    expect(result.redactionCount).toBeGreaterThanOrEqual(2);
-  });
-
-  it('does not redact other users paths', () => {
-    const result = pipeline.sanitize('/Users/someoneelse/file.txt');
-
-    // Should be left intact unless someoneelse happens to be the current user
-    if (username !== 'someoneelse') {
-      expect(result.text).toBe('/Users/someoneelse/file.txt');
-    }
-  });
-
-  it('does not redact bare ~ without path', () => {
-    const result = pipeline.sanitize('The tilde char is ~');
-
-    expect(result.text).toBe('The tilde char is ~');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Default pipeline integration
 // ---------------------------------------------------------------------------
 describe('createDefaultPipeline integration', () => {
   const pipeline = createDefaultPipeline();
 
   it('handles text with multiple categories of secrets', () => {
-    const username = userInfo().username;
     const text = [
       `key: sk-aaaa1111bbbb2222cccc3333dddd`,
       `auth: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig`,
       `password=supersecret`,
-      `path: /Users/${username}/Desktop/app`,
     ].join('\n');
 
     const result = pipeline.sanitize(text);
@@ -355,14 +304,28 @@ describe('createDefaultPipeline integration', () => {
     expect(result.text).not.toContain('sk-');
     expect(result.text).not.toContain('Bearer');
     expect(result.text).not.toContain('supersecret');
-    expect(result.text).not.toContain(username);
 
     expect(result.categories).toContain('api_key');
     expect(result.categories).toContain('bearer_token');
     expect(result.categories).toContain('password');
-    expect(result.categories).toContain('path');
 
-    expect(result.redactionCount).toBeGreaterThanOrEqual(4);
+    expect(result.redactionCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it('preserves file paths (paths provide context, not secrets)', () => {
+    const text = 'Reading file /Users/john/Documents/project/src/index.ts';
+    const result = pipeline.sanitize(text);
+
+    expect(result.text).toBe(text);
+    expect(result.redactionCount).toBe(0);
+  });
+
+  it('preserves ~/... paths', () => {
+    const text = 'Config at ~/projects/myapp/config.json';
+    const result = pipeline.sanitize(text);
+
+    expect(result.text).toBe(text);
+    expect(result.redactionCount).toBe(0);
   });
 
   it('passes clean text through unchanged', () => {
