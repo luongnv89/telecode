@@ -26,6 +26,8 @@ export interface CommandHandlers {
   list_bookmarks: CommandHandler;
   open_bookmark: CommandHandler;
   unbookmark: CommandHandler;
+  verbose: CommandHandler;
+  concise: CommandHandler;
 }
 
 function extractContext(ctx: Context): CommandContext | null {

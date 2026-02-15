@@ -327,9 +327,9 @@
 **Description**: Improve progress/log chunk formatting for readability and control.
 
 **Acceptance Criteria**:
-- [ ] Chunk format is compact and structured
-- [ ] Progress updates are distinguishable from logs/errors
-- [ ] User can request concise vs verbose mode
+- [x] Chunk format is compact and structured
+- [x] Progress updates are distinguishable from logs/errors
+- [x] User can request concise vs verbose mode
 
 **Dependencies**: Task 3.4
 

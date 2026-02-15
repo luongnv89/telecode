@@ -17,13 +17,25 @@ function formatEnvelope(envelope: ResponseEnvelope): string {
       return `✓ Command received: /${envelope.commandType}`;
 
     case 'progress':
-      return envelope.text;
+      return `⏳ ${envelope.text}`;
 
-    case 'result':
+    case 'result': {
+      const meta = envelope.metadata;
+      if (meta?.durationMs !== undefined || meta?.costUsd !== undefined) {
+        const parts: string[] = [];
+        if (meta.durationMs !== undefined) {
+          parts.push(`${(meta.durationMs / 1000).toFixed(1)}s`);
+        }
+        if (meta.costUsd !== undefined) {
+          parts.push(`$${meta.costUsd.toFixed(3)}`);
+        }
+        return `✅ Result (${parts.join(', ')}):\n\n${envelope.text}`;
+      }
       return envelope.text;
+    }
 
     case 'error':
-      return `Error [${envelope.code}]: ${envelope.message}`;
+      return `❌ ${envelope.code}: ${envelope.message}`;
 
     case 'status': {
       const lines = [

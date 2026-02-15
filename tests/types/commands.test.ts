@@ -176,6 +176,16 @@ describe('parseCommand', () => {
       const result = parseCommand('/unbookmark api');
       expect(result).toEqual({ ok: true, value: { type: 'unbookmark', name: 'api' } });
     });
+
+    it('parses /verbose', () => {
+      const result = parseCommand('/verbose');
+      expect(result).toEqual({ ok: true, value: { type: 'verbose' } });
+    });
+
+    it('parses /concise', () => {
+      const result = parseCommand('/concise');
+      expect(result).toEqual({ ok: true, value: { type: 'concise' } });
+    });
   });
 
   describe('error cases', () => {
@@ -320,6 +330,8 @@ describe('parseCommand', () => {
         expect(result.error).toContain('/bookmarks');
         expect(result.error).toContain('/open');
         expect(result.error).toContain('/unbookmark');
+        expect(result.error).toContain('/verbose');
+        expect(result.error).toContain('/concise');
       }
     });
   });

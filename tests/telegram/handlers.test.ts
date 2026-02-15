@@ -12,6 +12,7 @@ import type { LockManager } from '../../src/lock/manager.js';
 import type { SessionManager } from '../../src/claude/session-manager.js';
 import { TelecodeError } from '../../src/types/errors.js';
 import { createLockManager } from '../../src/lock/manager.js';
+import { createUserPreferences, type UserPreferences } from '../../src/telegram/user-preferences.js';
 
 // ---- Helpers ----
 
@@ -119,6 +120,20 @@ function makeCommand(
   if (type === 'unbookmark') {
     return {
       command: { type: 'unbookmark', name: overrides?.name ?? 'test' },
+      context: base,
+    };
+  }
+
+  if (type === 'verbose') {
+    return {
+      command: { type: 'verbose' },
+      context: base,
+    };
+  }
+
+  if (type === 'concise') {
+    return {
+      command: { type: 'concise' },
       context: base,
     };
   }
@@ -291,6 +306,7 @@ describe('command handlers', () => {
   let sessionRegistry: SessionRegistry;
   let focusManager: FocusManager;
   let persistence: SessionPersistence;
+  let userPreferences: UserPreferences;
   let deps: HandlerDeps;
 
   beforeEach(() => {
@@ -299,7 +315,8 @@ describe('command handlers', () => {
     sessionRegistry = createMockRegistry();
     focusManager = createMockFocusManager();
     persistence = createMockPersistence();
-    deps = { sessionRegistry, focusManager, persistence, sender, auditWriter };
+    userPreferences = createUserPreferences('concise');
+    deps = { sessionRegistry, focusManager, persistence, sender, auditWriter, userPreferences };
   });
 
   describe('/start_session', () => {
@@ -401,11 +418,12 @@ describe('command handlers', () => {
       const result = await handlers.send(cmd);
 
       expect(result).toBeDefined();
+      expect(result).toBeDefined();
       expect(result!.type).toBe('result');
       if (result!.type === 'result') {
         expect(result!.text).toBe('Claude says hello');
       }
-      expect(entry.adapter.sendPrompt).toHaveBeenCalledWith('sess-001', 'write a test');
+      expect(entry.adapter.sendPrompt).toHaveBeenCalledWith('sess-001', 'write a test', expect.any(Function));
     });
 
     it('returns NO_FOCUSED_SESSION when no session is focused', async () => {
@@ -900,7 +918,7 @@ describe('command handlers', () => {
       if (result!.type === 'result') {
         expect(result!.text).toBe('Claude says hello');
       }
-      expect(entry.adapter.sendPrompt).toHaveBeenCalledWith('sess-001', '/compact');
+      expect(entry.adapter.sendPrompt).toHaveBeenCalledWith('sess-001', '/compact', expect.any(Function));
     });
 
     it('returns NO_FOCUSED_SESSION when no session is focused', async () => {
@@ -1460,6 +1478,61 @@ describe('command handlers', () => {
       expect(result!.type).toBe('error');
       if (result!.type === 'error') {
         expect(result!.code).toBe('BOOKMARK_NOT_FOUND');
+      }
+    });
+  });
+
+  describe('/verbose', () => {
+    it('sets display mode to verbose', async () => {
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('verbose');
+
+      const result = await handlers.verbose(cmd);
+
+      expect(result!.type).toBe('result');
+      if (result!.type === 'result') {
+        expect(result!.text).toContain('verbose');
+      }
+      expect(userPreferences.getMode(123)).toBe('verbose');
+    });
+  });
+
+  describe('/concise', () => {
+    it('sets display mode to concise', async () => {
+      userPreferences.setMode(123, 'verbose');
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('concise');
+
+      const result = await handlers.concise(cmd);
+
+      expect(result!.type).toBe('result');
+      if (result!.type === 'result') {
+        expect(result!.text).toContain('concise');
+      }
+      expect(userPreferences.getMode(123)).toBe('concise');
+    });
+  });
+
+  describe('/send with progress streamer', () => {
+    it('includes durationMs and costUsd in result metadata', async () => {
+      const session = makeSession();
+      const entry = createMockEntry(session);
+      const entryMap = new Map([['sess-001', entry]]);
+      sessionRegistry = createMockRegistry(entryMap);
+      focusManager = createMockFocusManager();
+      (focusManager.getFocusedSessionId as any).mockReturnValue('sess-001');
+
+      deps = { ...deps, sessionRegistry, focusManager };
+      const handlers = createCommandHandlers(deps);
+      const cmd = makeCommand('send', { prompt: 'hello' });
+
+      const result = await handlers.send(cmd);
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('result');
+      if (result!.type === 'result') {
+        expect(result!.metadata?.durationMs).toBe(150);
+        expect(result!.metadata?.costUsd).toBe(0.002);
       }
     });
   });

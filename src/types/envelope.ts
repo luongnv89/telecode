@@ -19,6 +19,8 @@ export type ErrorCode =
 export interface EnvelopeMetadata {
   showButtons?: boolean;
   buttonStyle?: 'full' | 'status-only';
+  durationMs?: number;
+  costUsd?: number;
 }
 
 export type ResponseEnvelope =

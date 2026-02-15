@@ -15,6 +15,7 @@ import type { FocusManager } from '../session/focus-manager.js';
 import type { SessionPersistence } from '../session/persistence.js';
 import type { BookmarkStore } from '../session/bookmarks.js';
 import type { SessionDiscovery } from '../session/discovery.js';
+import { createUserPreferences } from './user-preferences.js';
 
 export interface BotDeps {
   config: AppConfig;
@@ -56,6 +57,8 @@ export function createBot(deps: BotDeps): BotWithMonitor {
     sessionTimeoutMs: config.sessionTimeoutMs,
   });
 
+  const userPreferences = createUserPreferences(config.defaultDisplayMode);
+
   const handlers = createCommandHandlers({
     sessionRegistry,
     focusManager,
@@ -66,6 +69,7 @@ export function createBot(deps: BotDeps): BotWithMonitor {
     monitor,
     bookmarkStore,
     sessionDiscovery,
+    userPreferences,
   });
 
   // Register auth middleware — runs before any command handlers

@@ -19,6 +19,8 @@ import { TelecodeError } from '../../types/errors.js';
 import type { CommandHandlers } from './router.js';
 import type { BookmarkStore } from '../../session/bookmarks.js';
 import type { SessionDiscovery } from '../../session/discovery.js';
+import type { UserPreferences } from '../user-preferences.js';
+import { createProgressStreamer } from '../progress-streamer.js';
 
 export interface HandlerDeps {
   sessionRegistry: SessionRegistry;
@@ -30,6 +32,7 @@ export interface HandlerDeps {
   monitor?: ResilienceMonitor;
   bookmarkStore?: BookmarkStore;
   sessionDiscovery?: SessionDiscovery;
+  userPreferences?: UserPreferences;
 }
 
 /** Resolve a path, expanding ~ to home directory. */
@@ -41,7 +44,7 @@ function resolvePath(inputPath: string): string {
 }
 
 export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
-  const { sessionRegistry, focusManager, persistence, sender, auditWriter, monitor, bookmarkStore, sessionDiscovery } = deps;
+  const { sessionRegistry, focusManager, persistence, sender, auditWriter, monitor, bookmarkStore, sessionDiscovery, userPreferences } = deps;
 
   async function safeAuditWrite(event: Parameters<AuditWriter['write']>[0], chatId?: number): Promise<void> {
     try {
@@ -195,7 +198,20 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           rawText: cmd.context.rawText,
         }, chatId);
 
-        const result = await entry.adapter.sendPrompt(session.sessionId, prompt);
+        const mode = userPreferences?.getMode(userId) ?? 'concise';
+        const streamer = createProgressStreamer({
+          chatId,
+          sender,
+          mode,
+        });
+
+        const result = await entry.adapter.sendPrompt(
+          session.sessionId,
+          prompt,
+          (chunk) => streamer.onChunk(chunk),
+        );
+
+        await streamer.flush();
 
         entry.manager.updateState('active');
 
@@ -214,7 +230,11 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           return createError('CLAUDE_ERROR', result.text);
         }
 
-        return createResult(result.text, { showButtons: true });
+        return createResult(result.text, {
+          showButtons: true,
+          durationMs: result.durationMs,
+          costUsd: result.totalCostUsd,
+        });
       } catch (err) {
         // Recover state on error
         const sessionId = focusManager.getFocusedSessionId(cmd.context.userId);
@@ -369,7 +389,20 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           rawText: cmd.context.rawText,
         }, chatId);
 
-        const result = await entry.adapter.sendPrompt(session.sessionId, prompt);
+        const mode = userPreferences?.getMode(userId) ?? 'concise';
+        const streamer = createProgressStreamer({
+          chatId,
+          sender,
+          mode,
+        });
+
+        const result = await entry.adapter.sendPrompt(
+          session.sessionId,
+          prompt,
+          (chunk) => streamer.onChunk(chunk),
+        );
+
+        await streamer.flush();
 
         entry.manager.updateState('active');
 
@@ -388,7 +421,10 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           return createError('CLAUDE_ERROR', result.text);
         }
 
-        return createResult(result.text);
+        return createResult(result.text, {
+          durationMs: result.durationMs,
+          costUsd: result.totalCostUsd,
+        });
       } catch (err) {
         const sessionId = focusManager.getFocusedSessionId(cmd.context.userId);
         if (sessionId) {
@@ -940,6 +976,20 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
       } catch (err) {
         return handleError(err);
       }
+    },
+
+    async verbose(cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+      if (userPreferences) {
+        userPreferences.setMode(cmd.context.userId, 'verbose');
+      }
+      return createResult('Display mode set to verbose.');
+    },
+
+    async concise(cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+      if (userPreferences) {
+        userPreferences.setMode(cmd.context.userId, 'concise');
+      }
+      return createResult('Display mode set to concise.');
     },
   };
 }

@@ -63,6 +63,10 @@ const configSchema = z.object({
     .string()
     .optional()
     .default(DEFAULT_BOOKMARKS_FILE),
+  defaultDisplayMode: z
+    .enum(['concise', 'verbose'])
+    .optional()
+    .default('concise'),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -77,6 +81,7 @@ export function loadConfig(): AppConfig {
     maxSessions: process.env.MAX_SESSIONS || undefined,
     sessionsFilePath: process.env.SESSIONS_FILE_PATH || undefined,
     bookmarksFilePath: process.env.BOOKMARKS_FILE_PATH || undefined,
+    defaultDisplayMode: process.env.DEFAULT_DISPLAY_MODE || undefined,
   });
 
   if (!result.success) {

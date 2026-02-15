@@ -17,7 +17,9 @@ export type BotCommand =
   | { type: 'bookmark'; name: string; path: string }
   | { type: 'list_bookmarks' }
   | { type: 'open_bookmark'; name: string }
-  | { type: 'unbookmark'; name: string };
+  | { type: 'unbookmark'; name: string }
+  | { type: 'verbose' }
+  | { type: 'concise' };
 
 export const CLAUDE_CODE_COMMANDS = ['clear', 'compact', 'context', 'resume'] as const;
 export type ClaudeCodeCommand = (typeof CLAUDE_CODE_COMMANDS)[number];
@@ -167,10 +169,16 @@ export function parseCommand(text: string): ParseResult<BotCommand> {
       }
       return { ok: true, value: { type: 'unbookmark', name: args } };
 
+    case '/verbose':
+      return { ok: true, value: { type: 'verbose' } };
+
+    case '/concise':
+      return { ok: true, value: { type: 'concise' } };
+
     default:
       return {
         ok: false,
-        error: `Unknown command: ${command}. Available commands: /start_session, /status, /stop, /new_session, /sessions, /switch, /remove, /cc_clear, /cc_compact, /cc_context, /cc_resume, /discover, /attach, /cd, /goto, /back, /resume, /bookmark, /bookmarks, /open, /unbookmark`,
+        error: `Unknown command: ${command}. Available commands: /start_session, /status, /stop, /new_session, /sessions, /switch, /remove, /cc_clear, /cc_compact, /cc_context, /cc_resume, /discover, /attach, /cd, /goto, /back, /resume, /bookmark, /bookmarks, /open, /unbookmark, /verbose, /concise`,
       };
   }
 }
