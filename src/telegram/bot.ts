@@ -8,6 +8,7 @@ import { createTelegramSender } from './sender.js';
 import { createDefaultPipeline } from '../sanitize/pipeline.js';
 import { createRegexMasker } from '../sanitize/regex-masking.js';
 import { createSafeSender } from '../sanitize/outbound.js';
+import { createPermissionBridge } from './permission-bridge.js';
 import { createResilienceMonitor, type ResilienceMonitor } from '../resilience/monitor.js';
 import type { AuditWriter } from '../audit/writer.js';
 import type { SessionRegistry } from '../session/registry.js';
@@ -49,6 +50,16 @@ export function createBot(deps: BotDeps): BotWithMonitor {
     },
   });
 
+  // Set up permission handler factory so sessions can bridge permission requests to Telegram
+  sessionRegistry.setPermissionHandlerFactory((chatId) => {
+    const bridge = createPermissionBridge({
+      chatId,
+      sendMessage: (cid, text, keyboard) => safeSender.sendMessage(cid, text, keyboard),
+      timeoutMs: config.permissionTimeoutMs,
+    });
+    return { canUseTool: bridge.canUseTool, bridge };
+  });
+
   // Create a lightweight resilience monitor.
   // In multi-session mode, the monitor checks all sessions in the registry.
   const monitor = createResilienceMonitor({
@@ -78,8 +89,13 @@ export function createBot(deps: BotDeps): BotWithMonitor {
   // Register command routing — safe sender used for both handler responses and parse errors
   registerCommands(bot, handlers, safeSender);
 
-  // Register inline button callback handlers
-  registerCallbacks(bot, handlers, safeSender);
+  // Register inline button callback handlers (including permission buttons)
+  registerCallbacks(bot, {
+    handlers,
+    sender: safeSender,
+    sessionRegistry,
+    focusManager,
+  });
 
   return { bot, monitor };
 }

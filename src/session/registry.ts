@@ -2,7 +2,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { createClaudeAdapter, type ClaudeAdapter, type ClaudeSessionConfig } from '../claude/adapter.js';
 import { SessionManager } from '../claude/session-manager.js';
 import { createLockManager, type LockManager } from '../lock/manager.js';
+import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import type { PermissionBridge } from '../telegram/permission-bridge.js';
 import type { Session, SessionState } from '../types/session.js';
+
+export interface PermissionHandlerResult {
+  canUseTool: CanUseTool;
+  bridge: PermissionBridge;
+}
+
+export type PermissionHandlerFactory = (chatId: number) => PermissionHandlerResult;
 
 export interface RegistryEntry {
   manager: SessionManager;
@@ -10,6 +19,7 @@ export interface RegistryEntry {
   lock: LockManager;
   workingDirectory: string;
   name?: string;
+  permissionBridge?: PermissionBridge;
 }
 
 export interface SessionRegistryConfig {
@@ -29,9 +39,14 @@ export interface SessionListItem {
 export class SessionRegistry {
   private entries: Map<string, RegistryEntry> = new Map();
   private config: SessionRegistryConfig;
+  private permissionHandlerFactory?: PermissionHandlerFactory;
 
   constructor(config: SessionRegistryConfig) {
     this.config = config;
+  }
+
+  setPermissionHandlerFactory(factory: PermissionHandlerFactory): void {
+    this.permissionHandlerFactory = factory;
   }
 
   get maxSessions(): number {
@@ -64,9 +79,19 @@ export class SessionRegistry {
       }
     }
 
+    let permissionBridge: PermissionBridge | undefined;
+    let canUseTool: CanUseTool | undefined;
+
+    if (this.permissionHandlerFactory) {
+      const result = this.permissionHandlerFactory(chatId);
+      canUseTool = result.canUseTool;
+      permissionBridge = result.bridge;
+    }
+
     const adapter = createClaudeAdapter({
       model: this.config.claudeModel,
       cwd: workingDirectory,
+      canUseTool,
     });
     const manager = new SessionManager(adapter);
     const lock = createLockManager();
@@ -81,6 +106,7 @@ export class SessionRegistry {
       lock,
       workingDirectory,
       name,
+      permissionBridge,
     });
 
     return session;
@@ -109,9 +135,19 @@ export class SessionRegistry {
       }
     }
 
+    let permissionBridge: PermissionBridge | undefined;
+    let canUseTool: CanUseTool | undefined;
+
+    if (this.permissionHandlerFactory) {
+      const result = this.permissionHandlerFactory(chatId);
+      canUseTool = result.canUseTool;
+      permissionBridge = result.bridge;
+    }
+
     const adapter = createClaudeAdapter({
       model: this.config.claudeModel,
       cwd: workingDirectory,
+      canUseTool,
     });
     const manager = new SessionManager(adapter);
     const lock = createLockManager();
@@ -126,6 +162,7 @@ export class SessionRegistry {
       lock,
       workingDirectory,
       name,
+      permissionBridge,
     });
 
     return session;
@@ -216,6 +253,8 @@ export class SessionRegistry {
   async removeSession(sessionId: string): Promise<void> {
     const entry = this.entries.get(sessionId);
     if (!entry) return;
+
+    entry.permissionBridge?.cancelAll();
 
     if (entry.manager.isActive()) {
       await entry.manager.stopSession();

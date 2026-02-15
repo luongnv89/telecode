@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerCallbacks } from '../../src/telegram/commands/callbacks.js';
 import type { CommandHandlers } from '../../src/telegram/commands/router.js';
 import type { TelegramSender } from '../../src/telegram/sender.js';
+import type { SessionRegistry } from '../../src/session/registry.js';
+import type { FocusManager } from '../../src/session/focus-manager.js';
 
 // --- Mock Bot ---
 
@@ -83,19 +85,39 @@ function createMockHandlers(): CommandHandlers {
 }
 
 function createMockSender(): TelegramSender {
-  return { sendResponse: vi.fn().mockResolvedValue(undefined), sendTypingIndicator: vi.fn().mockResolvedValue(undefined) };
+  return {
+    sendResponse: vi.fn().mockResolvedValue(undefined),
+    sendTypingIndicator: vi.fn().mockResolvedValue(undefined),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockSessionRegistry(): SessionRegistry {
+  return {
+    getEntry: vi.fn().mockReturnValue(undefined),
+  } as any;
+}
+
+function createMockFocusManager(): FocusManager {
+  return {
+    getFocusedSessionId: vi.fn().mockReturnValue(undefined),
+  } as any;
 }
 
 describe('registerCallbacks', () => {
   let bot: ReturnType<typeof createMockBot>;
   let handlers: CommandHandlers;
   let sender: TelegramSender;
+  let sessionRegistry: SessionRegistry;
+  let focusManager: FocusManager;
 
   beforeEach(() => {
     bot = createMockBot();
     handlers = createMockHandlers();
     sender = createMockSender();
-    registerCallbacks(bot as any, handlers, sender);
+    sessionRegistry = createMockSessionRegistry();
+    focusManager = createMockFocusManager();
+    registerCallbacks(bot as any, { handlers, sender, sessionRegistry, focusManager });
   });
 
   it('registers a callback_query:data handler', () => {

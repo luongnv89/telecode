@@ -10,6 +10,7 @@ const BASE_DELAY_MS = 1000;
 export interface TelegramSender {
   sendResponse(chatId: number, envelope: ResponseEnvelope): Promise<void>;
   sendTypingIndicator(chatId: number): Promise<void>;
+  sendMessage(chatId: number, text: string, keyboard?: InlineKeyboard): Promise<void>;
 }
 
 function formatEnvelope(envelope: ResponseEnvelope): string {
@@ -95,6 +96,11 @@ export function createTelegramSender(bot: Bot): TelegramSender {
 
     async sendTypingIndicator(chatId: number): Promise<void> {
       await bot.api.sendChatAction(chatId, 'typing');
+    },
+
+    async sendMessage(chatId: number, text: string, keyboard?: InlineKeyboard): Promise<void> {
+      const truncated = truncateMessage(text);
+      await sendWithRetry(bot, chatId, truncated, keyboard);
     },
   };
 }

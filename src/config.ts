@@ -67,6 +67,12 @@ const configSchema = z.object({
     .enum(['concise', 'verbose'])
     .optional()
     .default('concise'),
+  permissionTimeoutMs: z
+    .string()
+    .optional()
+    .default('60000')
+    .transform((s) => parseInt(s, 10))
+    .pipe(z.number().int().positive()),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -82,6 +88,7 @@ export function loadConfig(): AppConfig {
     sessionsFilePath: process.env.SESSIONS_FILE_PATH || undefined,
     bookmarksFilePath: process.env.BOOKMARKS_FILE_PATH || undefined,
     defaultDisplayMode: process.env.DEFAULT_DISPLAY_MODE || undefined,
+    permissionTimeoutMs: process.env.PERMISSION_TIMEOUT_MS || undefined,
   });
 
   if (!result.success) {

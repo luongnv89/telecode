@@ -3,6 +3,7 @@ import type {
   SDKMessage,
   SDKResultMessage,
   Query,
+  CanUseTool,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionState } from '../types/session.js';
 import { parseOutputChunks, parseResultMessage, type ClaudeOutputChunk, type ClaudeResult } from './message-parser.js';
@@ -11,6 +12,7 @@ export interface ClaudeSessionConfig {
   model?: string;
   cwd?: string;
   allowedTools?: string[];
+  canUseTool?: CanUseTool;
 }
 
 export interface ClaudeSessionInfo {
@@ -48,6 +50,7 @@ export function createClaudeAdapter(config: ClaudeSessionConfig): ClaudeAdapter 
           model: config.model,
           cwd: config.cwd,
           allowedTools: config.allowedTools,
+          canUseTool: config.canUseTool,
         },
       });
 
@@ -74,6 +77,7 @@ export function createClaudeAdapter(config: ClaudeSessionConfig): ClaudeAdapter 
         options: {
           model: config.model,
           resume: targetClaudeSessionId,
+          canUseTool: config.canUseTool,
         },
       });
 
@@ -108,6 +112,7 @@ export function createClaudeAdapter(config: ClaudeSessionConfig): ClaudeAdapter 
         options: {
           model: config.model,
           resume: claudeSessionId,
+          canUseTool: config.canUseTool,
         },
       });
       currentQuery = q;

@@ -8,6 +8,7 @@
  * If either stage fails, the message is blocked and an alert is raised.
  */
 
+import type { InlineKeyboard } from 'grammy';
 import type { TelegramSender } from '../telegram/sender.js';
 import type { SanitizationPipeline } from './pipeline.js';
 import type { MaskingResult } from './regex-masking.js';
@@ -142,6 +143,19 @@ export function createSafeSender(deps: SafeSenderDeps): TelegramSender & Outboun
 
     async sendTypingIndicator(chatId: number): Promise<void> {
       await innerSender.sendTypingIndicator(chatId);
+    },
+
+    async sendMessage(chatId: number, text: string, keyboard?: InlineKeyboard): Promise<void> {
+      try {
+        const result = sanitizeText(text);
+        await innerSender.sendMessage(chatId, result.text, keyboard);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(`[sanitize] sendMessage sanitization failed: ${error.message}`);
+        if (onSanitizeFailure) {
+          onSanitizeFailure(chatId, error);
+        }
+      }
     },
   };
 }
