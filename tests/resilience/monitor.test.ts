@@ -49,6 +49,7 @@ function createMockRegistry(entries?: Map<string, RegistryEntry>): SessionRegist
 function createMockSender(): TelegramSender {
   return {
     sendResponse: vi.fn().mockResolvedValue(undefined),
+    sendTypingIndicator: vi.fn().mockResolvedValue(undefined),
   };
 }
 

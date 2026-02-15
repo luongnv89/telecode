@@ -6,6 +6,7 @@ import type { ClaudeOutputChunk } from '../../src/claude/message-parser.js';
 function createMockSender(): TelegramSender {
   return {
     sendResponse: vi.fn().mockResolvedValue(undefined),
+    sendTypingIndicator: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -25,6 +26,56 @@ describe('ProgressStreamer', () => {
     vi.useRealTimers();
   });
 
+  it('sends typing indicator immediately on creation', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 4000,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(sender.sendTypingIndicator).toHaveBeenCalledWith(123);
+    expect(sender.sendTypingIndicator).toHaveBeenCalledTimes(1);
+    streamer.stop();
+  });
+
+  it('repeats typing indicator every 4 seconds', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 60000,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sender.sendTypingIndicator).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(sender.sendTypingIndicator).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(sender.sendTypingIndicator).toHaveBeenCalledTimes(3);
+
+    streamer.stop();
+  });
+
+  it('stop() clears the typing interval', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 60000,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sender.sendTypingIndicator).toHaveBeenCalledTimes(1);
+
+    streamer.stop();
+
+    await vi.advanceTimersByTimeAsync(8000);
+    // No additional calls after stop
+    expect(sender.sendTypingIndicator).toHaveBeenCalledTimes(1);
+  });
+
   it('sends progress on first chunk (throttle elapsed from start)', async () => {
     const streamer = createProgressStreamer({
       chatId: 123,
@@ -37,6 +88,7 @@ describe('ProgressStreamer', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(sender.sendResponse).toHaveBeenCalledTimes(1);
+    streamer.stop();
   });
 
   it('throttles sends within throttleMs window', async () => {
@@ -69,6 +121,8 @@ describe('ProgressStreamer', () => {
     streamer.onChunk(makeChunk());
     await vi.advanceTimersByTimeAsync(0);
     expect(sender.sendResponse).toHaveBeenCalledTimes(2);
+
+    streamer.stop();
   });
 
   it('formats concise mode message with updates count', async () => {
@@ -86,6 +140,7 @@ describe('ProgressStreamer', () => {
     const envelope = call[1];
     expect(envelope.type).toBe('progress');
     expect(envelope.text).toMatch(/Working\.\.\. \d+s \| 1 updates/);
+    streamer.stop();
   });
 
   it('shows tool timeline in concise mode for tool_use chunks', async () => {
@@ -101,6 +156,7 @@ describe('ProgressStreamer', () => {
 
     const call = (sender.sendResponse as any).mock.calls[0];
     expect(call[1].text).toContain('> Read: src/index.ts');
+    streamer.stop();
   });
 
   it('shows multiple tool actions in concise timeline', async () => {
@@ -125,6 +181,7 @@ describe('ProgressStreamer', () => {
     expect(text).toContain('> Read: src/index.ts');
     expect(text).toContain('> Bash: npm test');
     expect(text).toContain('> Edit: src/config.ts');
+    streamer.stop();
   });
 
   it('limits timeline to maxTimelineItems', async () => {
@@ -149,6 +206,7 @@ describe('ProgressStreamer', () => {
     expect(text).not.toContain('file1.ts');
     expect(text).toContain('> Read: file2.ts');
     expect(text).toContain('> Read: file3.ts');
+    streamer.stop();
   });
 
   it('formats verbose mode with activity and preview', async () => {
@@ -174,6 +232,7 @@ describe('ProgressStreamer', () => {
     expect(text).toContain('> Read: src/index.ts');
     expect(text).toContain('Last output:');
     expect(text).toContain('> ...');
+    streamer.stop();
   });
 
   it('verbose mode shows full content when under maxPreviewChars', async () => {
@@ -190,6 +249,7 @@ describe('ProgressStreamer', () => {
 
     const call = (sender.sendResponse as any).mock.calls[0];
     expect(call[1].text).toContain('> Short text');
+    streamer.stop();
   });
 
   it('verbose mode shows activity without last output when only tool_use', async () => {
@@ -208,6 +268,7 @@ describe('ProgressStreamer', () => {
     expect(text).toContain('Recent activity:');
     expect(text).toContain('> Bash: npm test');
     expect(text).not.toContain('Last output:');
+    streamer.stop();
   });
 
   it('flush sends pending progress', async () => {
@@ -226,6 +287,7 @@ describe('ProgressStreamer', () => {
     // Flush forces send of pending progress
     await streamer.flush();
     expect(sender.sendResponse).toHaveBeenCalledTimes(1);
+    streamer.stop();
   });
 
   it('flush does nothing when no chunks received', async () => {
@@ -238,6 +300,7 @@ describe('ProgressStreamer', () => {
 
     await streamer.flush();
     expect(sender.sendResponse).not.toHaveBeenCalled();
+    streamer.stop();
   });
 
   it('tracks stats correctly', () => {
@@ -254,6 +317,7 @@ describe('ProgressStreamer', () => {
     const stats = streamer.getStats();
     expect(stats.chunkCount).toBe(2);
     expect(stats.elapsedMs).toBeGreaterThanOrEqual(0);
+    streamer.stop();
   });
 
   it('catches and ignores sender errors', async () => {
@@ -272,6 +336,7 @@ describe('ProgressStreamer', () => {
 
     // Flush also should not throw
     await streamer.flush();
+    streamer.stop();
   });
 
   it('does not include tool timeline in concise mode with only text chunks', async () => {
@@ -289,5 +354,22 @@ describe('ProgressStreamer', () => {
     const text = call[1].text;
     expect(text).not.toContain('>');
     expect(text).toMatch(/Working\.\.\. \d+s \| 1 updates/);
+    streamer.stop();
+  });
+
+  it('ignores typing indicator errors gracefully', async () => {
+    (sender.sendTypingIndicator as any).mockRejectedValue(new Error('typing failed'));
+
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 60000,
+    });
+
+    // Should not throw even though typing indicator fails
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(sender.sendTypingIndicator).toHaveBeenCalled();
+    streamer.stop();
   });
 });

@@ -3,6 +3,8 @@ import type { TelegramSender } from './sender.js';
 import type { DisplayMode } from './user-preferences.js';
 import { createProgress } from '../types/envelope.js';
 
+const TYPING_INTERVAL_MS = 4000;
+
 export interface ProgressStreamerConfig {
   chatId: number;
   sender: TelegramSender;
@@ -15,6 +17,7 @@ export interface ProgressStreamerConfig {
 export interface ProgressStreamer {
   onChunk(chunk: ClaudeOutputChunk): void;
   flush(): Promise<void>;
+  stop(): void;
   getStats(): { chunkCount: number; elapsedMs: number };
 }
 
@@ -31,6 +34,12 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
   let pendingSend = false;
 
   const toolTimeline: string[] = [];
+
+  // Send typing indicator immediately and repeat every 4s
+  void config.sender.sendTypingIndicator(config.chatId).catch(() => {});
+  const typingInterval = setInterval(() => {
+    void config.sender.sendTypingIndicator(config.chatId).catch(() => {});
+  }, TYPING_INTERVAL_MS);
 
   function addToolAction(summary: string): void {
     toolTimeline.push(summary);
@@ -107,6 +116,10 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
       if (pendingSend && chunkCount > 0) {
         await sendProgress();
       }
+    },
+
+    stop(): void {
+      clearInterval(typingInterval);
     },
 
     getStats(): { chunkCount: number; elapsedMs: number } {

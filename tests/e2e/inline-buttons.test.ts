@@ -54,7 +54,7 @@ function createMockAdapter(): ClaudeAdapter {
 }
 
 function createMockSender(): TelegramSender {
-  return { sendResponse: vi.fn().mockResolvedValue(undefined) };
+  return { sendResponse: vi.fn().mockResolvedValue(undefined), sendTypingIndicator: vi.fn().mockResolvedValue(undefined) };
 }
 
 function createMockAuditWriter(): AuditWriter {

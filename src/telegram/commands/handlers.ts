@@ -206,36 +206,42 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           mode,
         });
 
-        const result = await entry.adapter.sendPrompt(
-          session.sessionId,
-          prompt,
-          (chunk) => streamer.onChunk(chunk),
-        );
+        try {
+          const result = await entry.adapter.sendPrompt(
+            session.sessionId,
+            prompt,
+            (chunk) => streamer.onChunk(chunk),
+          );
 
-        await streamer.flush();
+          await streamer.flush();
+          streamer.stop();
 
-        entry.manager.updateState('active');
+          entry.manager.updateState('active');
 
-        await safeAuditWrite({
-          event: 'output_delivered',
-          timestamp: new Date().toISOString(),
-          sessionId: session.sessionId,
-          claudeSessionId: session.claudeSessionId,
-          userId: session.userId,
-          chatId: session.chatId,
-          correlationId: session.sessionId,
-          charCount: result.text.length,
-        }, chatId);
+          await safeAuditWrite({
+            event: 'output_delivered',
+            timestamp: new Date().toISOString(),
+            sessionId: session.sessionId,
+            claudeSessionId: session.claudeSessionId,
+            userId: session.userId,
+            chatId: session.chatId,
+            correlationId: session.sessionId,
+            charCount: result.text.length,
+          }, chatId);
 
-        if (!result.success) {
-          return createError('CLAUDE_ERROR', result.text);
+          if (!result.success) {
+            return createError('CLAUDE_ERROR', result.text);
+          }
+
+          return createResult(result.text, {
+            showButtons: true,
+            durationMs: result.durationMs,
+            costUsd: result.totalCostUsd,
+          });
+        } catch (err) {
+          streamer.stop();
+          throw err;
         }
-
-        return createResult(result.text, {
-          showButtons: true,
-          durationMs: result.durationMs,
-          costUsd: result.totalCostUsd,
-        });
       } catch (err) {
         // Recover state on error
         const sessionId = focusManager.getFocusedSessionId(cmd.context.userId);
@@ -397,35 +403,41 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           mode,
         });
 
-        const result = await entry.adapter.sendPrompt(
-          session.sessionId,
-          prompt,
-          (chunk) => streamer.onChunk(chunk),
-        );
+        try {
+          const result = await entry.adapter.sendPrompt(
+            session.sessionId,
+            prompt,
+            (chunk) => streamer.onChunk(chunk),
+          );
 
-        await streamer.flush();
+          await streamer.flush();
+          streamer.stop();
 
-        entry.manager.updateState('active');
+          entry.manager.updateState('active');
 
-        await safeAuditWrite({
-          event: 'output_delivered',
-          timestamp: new Date().toISOString(),
-          sessionId: session.sessionId,
-          claudeSessionId: session.claudeSessionId,
-          userId: session.userId,
-          chatId: session.chatId,
-          correlationId: session.sessionId,
-          charCount: result.text.length,
-        }, chatId);
+          await safeAuditWrite({
+            event: 'output_delivered',
+            timestamp: new Date().toISOString(),
+            sessionId: session.sessionId,
+            claudeSessionId: session.claudeSessionId,
+            userId: session.userId,
+            chatId: session.chatId,
+            correlationId: session.sessionId,
+            charCount: result.text.length,
+          }, chatId);
 
-        if (!result.success) {
-          return createError('CLAUDE_ERROR', result.text);
+          if (!result.success) {
+            return createError('CLAUDE_ERROR', result.text);
+          }
+
+          return createResult(result.text, {
+            durationMs: result.durationMs,
+            costUsd: result.totalCostUsd,
+          });
+        } catch (err) {
+          streamer.stop();
+          throw err;
         }
-
-        return createResult(result.text, {
-          durationMs: result.durationMs,
-          costUsd: result.totalCostUsd,
-        });
       } catch (err) {
         const sessionId = focusManager.getFocusedSessionId(cmd.context.userId);
         if (sessionId) {

@@ -139,5 +139,9 @@ export function createSafeSender(deps: SafeSenderDeps): TelegramSender & Outboun
 
       await innerSender.sendResponse(chatId, sanitized);
     },
+
+    async sendTypingIndicator(chatId: number): Promise<void> {
+      await innerSender.sendTypingIndicator(chatId);
+    },
   };
 }

@@ -9,6 +9,7 @@ import type { ResponseEnvelope } from '../../src/types/envelope.js';
 function createMockInnerSender(): TelegramSender {
   return {
     sendResponse: vi.fn().mockResolvedValue(undefined),
+    sendTypingIndicator: vi.fn().mockResolvedValue(undefined),
   };
 }
 
