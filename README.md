@@ -8,6 +8,23 @@
   Send prompts, manage sessions, and receive sanitized responses — all from your phone.
 </p>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="https://github.com/luongnv89/telecode/actions"><img src="https://img.shields.io/github/actions/workflow/status/luongnv89/telecode/ci.yml?branch=main" alt="CI" /></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node.js 18+" />
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
+</p>
+
+## Features
+
+- **Multi-session** — run up to 5 concurrent Claude Code sessions with focus tracking
+- **Permission bridge** — approve or deny Claude tool usage via Telegram inline buttons
+- **Sanitized output** — two-stage pipeline (category-based + regex) blocks secrets before they reach Telegram
+- **Audit logging** — per-session JSONL logs for every command and response
+- **Session bookmarks** — save and restore working directories instantly
+- **Resilience** — automatic stale session detection, crash notifications, and retry policies
+- **One-line install** — `curl | bash` with optional macOS LaunchAgent service
+
 ## Install
 
 ```bash
@@ -81,15 +98,23 @@ See [Architecture](docs/architecture.md) for the full system design.
 | [Security](docs/security.md) | Sanitization pipeline, auth, lock model |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
 
-## Planning Documents
+## Tech Stack
 
-| Document | Description |
-|---|---|
-| [Idea](idea.md) | Original concept and clarifications |
-| [Validation](validate.md) | Feasibility analysis |
-| [PRD](prd.md) | Product Requirements Document |
-| [Tasks](tasks.md) | Sprint-based development task breakdown |
+- **Runtime**: Node.js 18+ / TypeScript (ES2022, strict)
+- **Telegram**: [grammy](https://grammy.dev/) bot framework
+- **AI**: [Claude Code SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
+- **Validation**: [Zod](https://zod.dev/) for config and command parsing
+- **Testing**: [Vitest](https://vitest.dev/) — 544 tests across 29 suites
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+
+- Development setup
+- Branching strategy and commit conventions
+- Pull request process
+- Coding standards
 
 ## License
 
-Private project.
+[MIT](LICENSE) — see [LICENSE](LICENSE) for details.

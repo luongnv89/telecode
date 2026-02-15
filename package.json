@@ -4,6 +4,26 @@
   "description": "Telegram bot that wraps Claude Code for remote macOS control",
   "type": "module",
   "main": "dist/index.js",
+  "license": "MIT",
+  "author": "Luong Nguyen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luongnv89/telecode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luongnv89/telecode/issues"
+  },
+  "homepage": "https://github.com/luongnv89/telecode#readme",
+  "keywords": [
+    "telegram",
+    "bot",
+    "claude",
+    "claude-code",
+    "ai",
+    "remote-control",
+    "macos",
+    "developer-tools"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",

@@ -6,3 +6,18 @@ logs/
 *.js.map
 *.d.ts
 !vitest.config.ts
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debug
+*.log
+npm-debug.log*
