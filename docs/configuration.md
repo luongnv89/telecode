@@ -1,0 +1,55 @@
+# Configuration Reference
+
+All configuration is provided via environment variables. Create a `.env` file in the project root or set them in your shell.
+
+## Environment Variables
+
+### Required
+
+| Variable | Type | Description |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | string | Telegram Bot API token from [@BotFather](https://t.me/BotFather) |
+| `ALLOWED_USER_IDS` | string | Comma-separated list of authorized Telegram user IDs (e.g., `123456,789012`) |
+
+### Optional
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `LOG_PATH` | string | `~/Library/Application Support/telecode/logs` | Directory for per-session audit log files |
+| `CLAUDE_MODEL` | string | *(SDK default)* | Claude model to use for sessions |
+| `SESSION_TIMEOUT_MS` | number | `1800000` (30 min) | Session inactivity timeout in milliseconds |
+| `MAX_SESSIONS` | number | `5` | Maximum concurrent sessions (1-10) |
+| `SESSIONS_FILE_PATH` | string | `~/Library/Application Support/telecode/sessions.json` | Path for session persistence file |
+| `BOOKMARKS_FILE_PATH` | string | `~/Library/Application Support/telecode/bookmarks.json` | Path for bookmarks file |
+
+## Example `.env`
+
+```env
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+ALLOWED_USER_IDS=123456789,987654321
+LOG_PATH=/var/log/telecode
+SESSION_TIMEOUT_MS=3600000
+MAX_SESSIONS=3
+```
+
+## Validation
+
+Configuration is validated at startup using Zod schemas (`src/config.ts`). Invalid values produce clear error messages and prevent the bot from starting.
+
+Validation rules:
+- `TELEGRAM_BOT_TOKEN` must be a non-empty string
+- `ALLOWED_USER_IDS` must parse to an array of positive integers
+- `SESSION_TIMEOUT_MS` must parse to a positive integer
+- `MAX_SESSIONS` must parse to a positive integer between 1 and 10
+
+## Data Paths
+
+All persistent data is stored under `~/Library/Application Support/telecode/` by default:
+
+```
+~/Library/Application Support/telecode/
+├── logs/                    # Per-session JSONL audit logs
+│   └── session-YYYYMMDD-HHMMSS-<id>.jsonl
+├── sessions.json            # Persisted session state
+└── bookmarks.json           # Saved directory bookmarks
+```
