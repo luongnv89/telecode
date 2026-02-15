@@ -41,6 +41,8 @@ Edit `.env` with your credentials:
 | `SESSION_TIMEOUT_MS` | No | Session timeout (default: 30 minutes) |
 | `MAX_SESSIONS` | No | Max concurrent sessions (default: 5) |
 | `LOG_PATH` | No | Audit log directory |
+| `DEFAULT_DISPLAY_MODE` | No | Progress display mode (`concise` or `verbose`) |
+| `PERMISSION_TIMEOUT_MS` | No | Permission request timeout (default: 60s) |
 
 See [Configuration Reference](configuration.md) for all options.
 

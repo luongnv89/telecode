@@ -138,6 +138,20 @@ Send `/context` to the focused Claude session (show context info).
 
 Send `/resume` to the focused Claude session (resume previous conversation).
 
+## Display & Info
+
+### `/verbose`
+
+Switch to verbose progress display. Shows detailed update counts, character counts, recent tool activity, and last output preview during Claude execution.
+
+### `/concise`
+
+Switch to concise progress display (default). Shows a compact working indicator with elapsed time and recent tool activity.
+
+### `/version`
+
+Show the current Telecode version.
+
 ## Inline Buttons
 
 Certain responses include inline keyboard buttons for quick actions:
@@ -149,3 +163,15 @@ Certain responses include inline keyboard buttons for quick actions:
 | **New Session** | Reset Claude context | Session start, prompt results, session list, status, new session |
 
 Buttons trigger the same handlers as text commands, with full auth and lock enforcement.
+
+## Permission Buttons
+
+When Claude Code requests permission to use a tool (e.g., running a shell command), Telecode sends an inline message with three options:
+
+| Button | Action |
+|---|---|
+| **Allow** | Approve this specific tool use |
+| **Deny** | Reject this tool use (interrupts the current operation) |
+| **Always Allow** | Approve and add a persistent permission rule for the session |
+
+Permission requests time out after `PERMISSION_TIMEOUT_MS` (default: 60 seconds), auto-denying if no response is given.

@@ -91,6 +91,19 @@ Every session produces a JSONL audit log file capturing:
 
 Log files are stored at `~/Library/Application Support/telecode/logs/` by default (configurable via `LOG_PATH`).
 
+## Permission Bridge
+
+When Claude Code requests permission to use a tool (via the SDK's `canUseTool` callback), the permission bridge (`src/telegram/permission-bridge.ts`) sends an inline message to the user with Allow, Deny, and Always Allow buttons.
+
+Security properties:
+
+- **Per-request IDs**: Each permission request gets a unique 8-character ID, preventing replay or cross-request interference
+- **Timeout enforcement**: Requests auto-deny after `PERMISSION_TIMEOUT_MS` (default: 60s) if the user doesn't respond
+- **Abort signal support**: If the SDK aborts the operation, the pending permission is immediately cancelled with deny+interrupt
+- **Send failure fallback**: If the Telegram message can't be delivered, the request auto-denies
+- **Session cleanup**: When a session is stopped, all pending permission requests are cancelled via `cancelAll()`
+- **Focused session scoping**: Permission callbacks are resolved only against the user's currently focused session
+
 ## Inline Button Security
 
 Inline keyboard button clicks go through the same security pipeline as text commands:

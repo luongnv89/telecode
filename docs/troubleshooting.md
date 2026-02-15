@@ -83,6 +83,23 @@ If the session state changed since the message was sent (e.g., session was stopp
 
 Inline buttons only appear on specific response types: session start, prompt results, status, new session, and session list. Error responses and stop confirmations do not include buttons.
 
+## Permission Requests
+
+### Permission request timed out
+
+If you see "Permission request timed out", Claude was waiting for your approval to use a tool but you didn't respond in time. The timeout is controlled by `PERMISSION_TIMEOUT_MS` (default: 60 seconds). Increase it if you need more time:
+```env
+PERMISSION_TIMEOUT_MS=120000
+```
+
+### No permission buttons appearing
+
+Permission buttons only appear when Claude Code requests tool approval via the SDK's `canUseTool` callback. If you're running with `allowedTools` configured to auto-approve certain tools, those won't show permission prompts.
+
+### "No focused session — permission request ignored"
+
+You clicked a permission button but don't have a focused session. This can happen if the session was stopped while a permission request was pending.
+
 ## Audit Logs
 
 ### Log files not appearing
