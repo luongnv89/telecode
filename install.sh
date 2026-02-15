@@ -362,9 +362,14 @@ PLIST
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
-step "Installation complete"
+# Read version from package.json
+APP_VERSION=$(node -e "console.log(require('$PROJECT_DIR/package.json').version)" 2>/dev/null || echo "unknown")
+GIT_HASH=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+step "Installation complete — v${APP_VERSION} (${GIT_HASH})"
 
 printf "\n"
+printf "  ${BOLD}Version:${NC}     v%s (%s)\n" "$APP_VERSION" "$GIT_HASH"
 printf "  ${BOLD}Project:${NC}     %s\n" "$PROJECT_DIR"
 printf "  ${BOLD}App data:${NC}    %s\n" "$APP_DATA_DIR"
 printf "  ${BOLD}Config:${NC}      %s/.env\n" "$PROJECT_DIR"

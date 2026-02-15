@@ -6,8 +6,10 @@ import { FocusManager } from './session/focus-manager.js';
 import { SessionPersistence } from './session/persistence.js';
 import { createBookmarkStore } from './session/bookmarks.js';
 import { createSessionDiscovery } from './session/discovery.js';
+import { VERSION_STRING } from './version.js';
 
 async function main(): Promise<void> {
+  console.log(`[telecode] Telecode ${VERSION_STRING}`);
   console.log('[telecode] Loading configuration...');
   const config = loadConfig();
 

@@ -21,6 +21,7 @@ import type { BookmarkStore } from '../../session/bookmarks.js';
 import type { SessionDiscovery } from '../../session/discovery.js';
 import type { UserPreferences } from '../user-preferences.js';
 import { createProgressStreamer } from '../progress-streamer.js';
+import { VERSION_STRING } from '../../version.js';
 
 export interface HandlerDeps {
   sessionRegistry: SessionRegistry;
@@ -990,6 +991,10 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         userPreferences.setMode(cmd.context.userId, 'concise');
       }
       return createResult('Display mode set to concise.');
+    },
+
+    async version(_cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+      return createResult(`Telecode ${VERSION_STRING}`);
     },
   };
 }

@@ -28,6 +28,7 @@ export interface CommandHandlers {
   unbookmark: CommandHandler;
   verbose: CommandHandler;
   concise: CommandHandler;
+  version: CommandHandler;
 }
 
 function extractContext(ctx: Context): CommandContext | null {
