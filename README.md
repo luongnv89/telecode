@@ -1,6 +1,11 @@
-# Telecode
+<p align="center">
+  <img src="assets/logo/logo-full.svg" alt="Telecode" width="520" />
+</p>
 
-Telegram bot that wraps Claude Code for remote macOS control. Send prompts, manage sessions, and receive sanitized responses — all from your phone.
+<p align="center">
+  Telegram bot that wraps Claude Code for remote macOS control.<br/>
+  Send prompts, manage sessions, and receive sanitized responses — all from your phone.
+</p>
 
 ## Quickstart
 
