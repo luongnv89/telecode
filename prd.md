@@ -262,17 +262,17 @@ graph LR
 **Timeline**: no limit (deliver when robust)
 
 **Scope**
-- [ ] Telegram commands: `/start_session`, `/send`, `/status`, `/stop`, `/new_session`
-- [ ] Single concurrent connection lock
-- [ ] Reuse existing authorized local Claude Code environment
-- [ ] Transport-layer sanitization + deterministic masking
-- [ ] Per-session local audit logs
+- [x] Telegram commands: `/start_session`, `/send`, `/status`, `/stop`, `/new_session`
+- [x] Single concurrent connection lock
+- [x] Reuse existing authorized local Claude Code environment
+- [x] Transport-layer sanitization + deterministic masking
+- [x] Per-session local audit logs
 
 **MVP Success Criteria**
-- [ ] Remote tasks can be run end-to-end from Telegram on macOS host
-- [ ] Second concurrent connection attempts are consistently rejected
-- [ ] No unmasked critical secret leak observed in test suite + pilot runs
-- [ ] Every remote action is traceable in local session logs
+- [x] Remote tasks can be run end-to-end from Telegram on macOS host
+- [x] Second concurrent connection attempts are consistently rejected
+- [x] No unmasked critical secret leak observed in test suite + pilot runs
+- [x] Every remote action is traceable in local session logs
 
 ### 8.2 Post-MVP (v1.1)
 - Interactive Telegram inline controls

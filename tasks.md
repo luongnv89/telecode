@@ -295,9 +295,9 @@
 **Description**: Run integrated tests and checklist before declaring MVP ready.
 
 **Acceptance Criteria**:
-- [ ] End-to-end tests pass for lifecycle and lock behavior
-- [ ] Security tests pass for outbound masking scenarios
-- [ ] MVP checklist in PRD section 8.1 is fully checked
+- [x] End-to-end tests pass for lifecycle and lock behavior
+- [x] Security tests pass for outbound masking scenarios
+- [x] MVP checklist in PRD section 8.1 is fully checked
 
 **Dependencies**: Task 3.1, Task 3.2, Task 3.3
 
@@ -312,9 +312,9 @@
 **Description**: Add callback controls for status/stop/new session actions.
 
 **Acceptance Criteria**:
-- [ ] Buttons execute mapped commands
-- [ ] Permission/lock checks remain enforced
-- [ ] UI state feedback visible to user
+- [x] Buttons execute mapped commands
+- [x] Permission/lock checks remain enforced
+- [x] UI state feedback visible to user
 
 **Dependencies**: Task 3.4
 

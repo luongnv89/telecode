@@ -2,6 +2,7 @@ import { Bot } from 'grammy';
 import type { AppConfig } from '../config.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 import { registerCommands } from './commands/router.js';
+import { registerCallbacks } from './commands/callbacks.js';
 import { createCommandHandlers } from './commands/handlers.js';
 import { createTelegramSender } from './sender.js';
 import { createDefaultPipeline } from '../sanitize/pipeline.js';
@@ -72,6 +73,9 @@ export function createBot(deps: BotDeps): BotWithMonitor {
 
   // Register command routing — safe sender used for both handler responses and parse errors
   registerCommands(bot, handlers, safeSender);
+
+  // Register inline button callback handlers
+  registerCallbacks(bot, handlers, safeSender);
 
   return { bot, monitor };
 }
