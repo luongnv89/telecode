@@ -27,10 +27,27 @@ PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 APP_DATA_DIR="$HOME/Library/Application Support/telecode"
 LOG_DIR="$HOME/Library/Logs/telecode"
 MIN_NODE_VERSION=18
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.telecode}"
+REPO_URL="https://github.com/luongnv89/telecode.git"
 
-# Resolve script directory (where the project lives)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR"
+# Detect local vs remote execution
+# When piped from curl, BASH_SOURCE[0] is empty — use this to distinguish modes.
+_SELF="${BASH_SOURCE[0]:-}"
+if [ -n "$_SELF" ] && [ -f "$_SELF" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$_SELF")" && pwd)"
+    if [ -f "$SCRIPT_DIR/package.json" ]; then
+        PROJECT_DIR="$SCRIPT_DIR"
+        REMOTE_INSTALL=false
+    else
+        REMOTE_INSTALL=true
+        PROJECT_DIR=""
+    fi
+else
+    REMOTE_INSTALL=true
+    # PROJECT_DIR set after clone in the download step below
+    PROJECT_DIR=""
+fi
+unset _SELF
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
 INSTALL_SERVICE=false
@@ -40,7 +57,7 @@ usage() {
     cat <<EOF
 ${BOLD}TeleCode Installer for macOS${NC}
 
-Usage: $0 [OPTIONS]
+Usage: install.sh [OPTIONS]
 
 Options:
   --service       Install as a LaunchAgent service (auto-start on login)
@@ -48,9 +65,13 @@ Options:
   -h, --help      Show this help message
 
 Examples:
-  $0                  # Install dependencies and build only
-  $0 --service        # Install + register as auto-start service
-  $0 --uninstall      # Remove the service (keeps files)
+  install.sh                  # Install dependencies and build only
+  install.sh --service        # Install + register as auto-start service
+  install.sh --uninstall      # Remove the service (keeps files)
+
+Remote install:
+  curl -fsSL https://raw.githubusercontent.com/luongnv89/telecode/main/install.sh | bash
+  curl -fsSL ... | bash -s -- --service
 EOF
     exit 0
 }
@@ -84,7 +105,12 @@ if $UNINSTALL; then
     fi
 
     printf "\n${GREEN}${BOLD}TeleCode service uninstalled.${NC}\n"
-    printf "Project files in ${PROJECT_DIR} are untouched.\n"
+    if $REMOTE_INSTALL; then
+        printf "Project files in ${INSTALL_DIR} are untouched.\n"
+        printf "To fully remove: rm -rf \"${INSTALL_DIR}\"\n"
+    else
+        printf "Project files in ${PROJECT_DIR} are untouched.\n"
+    fi
     printf "To also remove app data: rm -rf \"${APP_DATA_DIR}\"\n"
     exit 0
 fi
@@ -135,6 +161,19 @@ if ! command -v npm &>/dev/null; then
 fi
 success "npm $(npm -v) found"
 
+# Git (required for remote install)
+if ! command -v git &>/dev/null; then
+    if $REMOTE_INSTALL; then
+        error "git is required for remote installation but was not found."
+        info "Install with: brew install git"
+        exit 1
+    else
+        warn "git not found (not required for local install)"
+    fi
+else
+    success "git $(git --version | awk '{print $3}') found"
+fi
+
 # Claude Code
 if ! command -v claude &>/dev/null; then
     warn "Claude Code CLI not found in PATH."
@@ -143,6 +182,19 @@ if ! command -v claude &>/dev/null; then
     warn "Continuing installation, but the bot will not work without Claude Code."
 else
     success "Claude Code CLI found"
+fi
+
+# ── Download (remote install only) ─────────────────────────────────────────
+if $REMOTE_INSTALL; then
+    step "Downloading Telecode"
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        info "Updating existing installation..."
+        git -C "$INSTALL_DIR" pull --ff-only
+    else
+        git clone "$REPO_URL" "$INSTALL_DIR"
+    fi
+    PROJECT_DIR="$INSTALL_DIR"
+    success "Source ready at $PROJECT_DIR"
 fi
 
 # ── Install dependencies ────────────────────────────────────────────────────
@@ -334,7 +386,14 @@ if $INSTALL_SERVICE; then
     printf "  %-42s %s\n" "Check status:" "launchctl print gui/\$(id -u)/$PLIST_LABEL"
     printf "  %-42s %s\n" "View stdout:" "tail -f $LOG_DIR/stdout.log"
     printf "  %-42s %s\n" "View stderr:" "tail -f $LOG_DIR/stderr.log"
-    printf "  %-42s %s\n" "Uninstall service:" "$0 --uninstall"
+    printf "  %-42s %s\n" "Uninstall service:" "$PROJECT_DIR/install.sh --uninstall"
+fi
+
+if $REMOTE_INSTALL; then
+    printf "\n${BOLD}Update:${NC}\n"
+    printf "  %-42s %s\n" "Update Telecode:" "cd $PROJECT_DIR && git pull && npm install && npm run build"
+    printf "\n${BOLD}Uninstall:${NC}\n"
+    printf "  %-42s %s\n" "Remove everything:" "rm -rf \"$PROJECT_DIR\" \"$APP_DATA_DIR\" \"$LOG_DIR\""
 fi
 
 if $ENV_NEEDS_EDIT; then

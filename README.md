@@ -8,6 +8,17 @@
   Send prompts, manage sessions, and receive sanitized responses — all from your phone.
 </p>
 
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/luongnv89/telecode/main/install.sh | bash
+```
+
+To install and run as a service (auto-start on login):
+```bash
+curl -fsSL https://raw.githubusercontent.com/luongnv89/telecode/main/install.sh | bash -s -- --service
+```
+
 ## Quickstart
 
 ```bash
