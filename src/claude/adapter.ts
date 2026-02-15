@@ -5,7 +5,7 @@ import type {
   Query,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionState } from '../types/session.js';
-import { parseOutputChunk, parseResultMessage, type ClaudeOutputChunk, type ClaudeResult } from './message-parser.js';
+import { parseOutputChunks, parseResultMessage, type ClaudeOutputChunk, type ClaudeResult } from './message-parser.js';
 
 export interface ClaudeSessionConfig {
   model?: string;
@@ -121,8 +121,10 @@ export function createClaudeAdapter(config: ClaudeSessionConfig): ClaudeAdapter 
         if (message.type === 'result') {
           resultMessage = message;
         } else if (onChunk) {
-          const chunk = parseOutputChunk(message);
-          if (chunk) onChunk(chunk);
+          const chunks = parseOutputChunks(message);
+          for (const chunk of chunks) {
+            onChunk(chunk);
+          }
         }
       }
 

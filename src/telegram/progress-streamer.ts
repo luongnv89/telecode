@@ -9,6 +9,7 @@ export interface ProgressStreamerConfig {
   mode: DisplayMode;
   throttleMs?: number;
   maxPreviewChars?: number;
+  maxTimelineItems?: number;
 }
 
 export interface ProgressStreamer {
@@ -20,29 +21,53 @@ export interface ProgressStreamer {
 export function createProgressStreamer(config: ProgressStreamerConfig): ProgressStreamer {
   const throttleMs = config.throttleMs ?? 4000;
   const maxPreviewChars = config.maxPreviewChars ?? 150;
+  const maxTimelineItems = config.maxTimelineItems ?? 3;
 
   const startTime = Date.now();
   let chunkCount = 0;
   let totalChars = 0;
   let lastSendTime = startTime;
-  let lastToolName: string | undefined;
   let lastContent = '';
   let pendingSend = false;
+
+  const toolTimeline: string[] = [];
+
+  function addToolAction(summary: string): void {
+    toolTimeline.push(summary);
+    if (toolTimeline.length > maxTimelineItems) {
+      toolTimeline.shift();
+    }
+  }
 
   function formatMessage(): string {
     const elapsed = Math.round((Date.now() - startTime) / 1000);
 
     if (config.mode === 'verbose') {
-      const preview = lastContent.length > maxPreviewChars
-        ? '...' + lastContent.slice(-maxPreviewChars)
-        : lastContent;
-      return `[${elapsed}s] ${chunkCount} updates (${totalChars} chars)\n> ${preview}`;
+      let text = `[${elapsed}s] ${chunkCount} updates (${totalChars} chars)`;
+
+      if (toolTimeline.length > 0) {
+        text += '\n\nRecent activity:';
+        for (const action of toolTimeline) {
+          text += `\n> ${action}`;
+        }
+      }
+
+      if (lastContent) {
+        const preview = lastContent.length > maxPreviewChars
+          ? '...' + lastContent.slice(-maxPreviewChars)
+          : lastContent;
+        text += `\n\nLast output:\n> ${preview}`;
+      }
+
+      return text;
     }
 
     // Concise mode
     let text = `Working... ${elapsed}s | ${chunkCount} updates`;
-    if (lastToolName) {
-      text += ` | Tool: ${lastToolName}`;
+    if (toolTimeline.length > 0) {
+      for (const action of toolTimeline) {
+        text += `\n> ${action}`;
+      }
     }
     return text;
   }
@@ -62,10 +87,11 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
     onChunk(chunk: ClaudeOutputChunk): void {
       chunkCount++;
       totalChars += chunk.content.length;
-      lastContent = chunk.content;
 
       if (chunk.type === 'tool_use') {
-        lastToolName = chunk.content.split('\n')[0].slice(0, 50);
+        addToolAction(chunk.content);
+      } else {
+        lastContent = chunk.content;
       }
 
       const now = Date.now();

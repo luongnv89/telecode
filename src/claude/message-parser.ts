@@ -18,6 +18,33 @@ export interface ClaudeResult {
   errors?: string[];
 }
 
+export function summarizeToolUse(name: string, input: Record<string, unknown>): string {
+  switch (name) {
+    case 'Read':
+    case 'Edit':
+    case 'Write':
+      return input.file_path ? `${name}: ${input.file_path}` : `${name}`;
+    case 'Bash':
+      if (input.command) {
+        const cmd = String(input.command).slice(0, 60);
+        return `Bash: ${cmd}${String(input.command).length > 60 ? '...' : ''}`;
+      }
+      return 'Bash';
+    case 'Grep':
+      if (input.pattern) {
+        const path = input.path ? ` in ${input.path}` : '';
+        return `Grep: ${input.pattern}${path}`;
+      }
+      return 'Grep';
+    case 'Glob':
+      return input.pattern ? `Glob: ${input.pattern}` : 'Glob';
+    case 'Task':
+      return input.description ? `Task: ${input.description}` : 'Task';
+    default:
+      return name;
+  }
+}
+
 export function extractTextFromAssistant(message: SDKAssistantMessage): string {
   const content = message.message.content;
   if (typeof content === 'string') return content;
@@ -52,27 +79,51 @@ export function parseResultMessage(message: SDKResultMessage): ClaudeResult {
   };
 }
 
-export function parseOutputChunk(message: SDKMessage): ClaudeOutputChunk | null {
+export function parseOutputChunks(message: SDKMessage): ClaudeOutputChunk[] {
   switch (message.type) {
     case 'assistant': {
-      const text = extractTextFromAssistant(message);
-      if (!text) return null;
-      return { type: 'text', content: text };
+      const chunks: ClaudeOutputChunk[] = [];
+      const content = message.message.content;
+
+      if (typeof content === 'string') {
+        if (content) chunks.push({ type: 'text', content });
+        return chunks;
+      }
+
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          chunks.push({ type: 'text', content: block.text });
+        } else if (block.type === 'tool_use') {
+          const summary = summarizeToolUse(block.name, (block.input ?? {}) as Record<string, unknown>);
+          chunks.push({ type: 'tool_use', content: summary });
+        }
+      }
+      return chunks;
+    }
+
+    case 'tool_progress': {
+      const toolMsg = message as { tool_name: string };
+      return [{ type: 'tool_use', content: toolMsg.tool_name }];
     }
 
     case 'user': {
-      // User messages that contain tool results
       if (message.tool_use_result) {
         const content =
           typeof message.tool_use_result === 'string'
             ? message.tool_use_result
             : JSON.stringify(message.tool_use_result);
-        return { type: 'tool_result', content };
+        return [{ type: 'tool_result', content }];
       }
-      return null;
+      return [];
     }
 
     default:
-      return null;
+      return [];
   }
+}
+
+/** @deprecated Use parseOutputChunks instead */
+export function parseOutputChunk(message: SDKMessage): ClaudeOutputChunk | null {
+  const chunks = parseOutputChunks(message);
+  return chunks.length > 0 ? chunks[0] : null;
 }

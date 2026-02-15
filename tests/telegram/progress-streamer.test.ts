@@ -71,7 +71,7 @@ describe('ProgressStreamer', () => {
     expect(sender.sendResponse).toHaveBeenCalledTimes(2);
   });
 
-  it('formats concise mode message', async () => {
+  it('formats concise mode message with updates count', async () => {
     const streamer = createProgressStreamer({
       chatId: 123,
       sender,
@@ -88,7 +88,7 @@ describe('ProgressStreamer', () => {
     expect(envelope.text).toMatch(/Working\.\.\. \d+s \| 1 updates/);
   });
 
-  it('includes tool indicator in concise mode for tool_use chunks', async () => {
+  it('shows tool timeline in concise mode for tool_use chunks', async () => {
     const streamer = createProgressStreamer({
       chatId: 123,
       sender,
@@ -96,14 +96,62 @@ describe('ProgressStreamer', () => {
       throttleMs: 0,
     });
 
-    streamer.onChunk(makeChunk('tool_use', 'Read file\nsrc/index.ts'));
+    streamer.onChunk(makeChunk('tool_use', 'Read: src/index.ts'));
     await vi.advanceTimersByTimeAsync(0);
 
     const call = (sender.sendResponse as any).mock.calls[0];
-    expect(call[1].text).toContain('Tool: Read file');
+    expect(call[1].text).toContain('> Read: src/index.ts');
   });
 
-  it('formats verbose mode with preview', async () => {
+  it('shows multiple tool actions in concise timeline', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 0,
+    });
+
+    streamer.onChunk(makeChunk('tool_use', 'Read: src/index.ts'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    streamer.onChunk(makeChunk('tool_use', 'Bash: npm test'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    streamer.onChunk(makeChunk('tool_use', 'Edit: src/config.ts'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const lastCall = (sender.sendResponse as any).mock.calls[2];
+    const text = lastCall[1].text;
+    expect(text).toContain('> Read: src/index.ts');
+    expect(text).toContain('> Bash: npm test');
+    expect(text).toContain('> Edit: src/config.ts');
+  });
+
+  it('limits timeline to maxTimelineItems', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 0,
+      maxTimelineItems: 2,
+    });
+
+    streamer.onChunk(makeChunk('tool_use', 'Read: file1.ts'));
+    await vi.advanceTimersByTimeAsync(0);
+    streamer.onChunk(makeChunk('tool_use', 'Read: file2.ts'));
+    await vi.advanceTimersByTimeAsync(0);
+    streamer.onChunk(makeChunk('tool_use', 'Read: file3.ts'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const lastCall = (sender.sendResponse as any).mock.calls[2];
+    const text = lastCall[1].text;
+    // First item should have been evicted
+    expect(text).not.toContain('file1.ts');
+    expect(text).toContain('> Read: file2.ts');
+    expect(text).toContain('> Read: file3.ts');
+  });
+
+  it('formats verbose mode with activity and preview', async () => {
     const streamer = createProgressStreamer({
       chatId: 123,
       sender,
@@ -112,15 +160,20 @@ describe('ProgressStreamer', () => {
       maxPreviewChars: 20,
     });
 
+    streamer.onChunk(makeChunk('tool_use', 'Read: src/index.ts'));
+    await vi.advanceTimersByTimeAsync(0);
+
     const longContent = 'A'.repeat(50);
     streamer.onChunk(makeChunk('text', longContent));
     await vi.advanceTimersByTimeAsync(0);
 
-    const call = (sender.sendResponse as any).mock.calls[0];
-    const text = call[1].text;
-    expect(text).toMatch(/\[\d+s\] 1 updates \(50 chars\)/);
+    const lastCall = (sender.sendResponse as any).mock.calls[1];
+    const text = lastCall[1].text;
+    expect(text).toMatch(/\[\d+s\] 2 updates \(\d+ chars\)/);
+    expect(text).toContain('Recent activity:');
+    expect(text).toContain('> Read: src/index.ts');
+    expect(text).toContain('Last output:');
     expect(text).toContain('> ...');
-    expect(text.length).toBeLessThan(100);
   });
 
   it('verbose mode shows full content when under maxPreviewChars', async () => {
@@ -137,6 +190,24 @@ describe('ProgressStreamer', () => {
 
     const call = (sender.sendResponse as any).mock.calls[0];
     expect(call[1].text).toContain('> Short text');
+  });
+
+  it('verbose mode shows activity without last output when only tool_use', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'verbose',
+      throttleMs: 0,
+    });
+
+    streamer.onChunk(makeChunk('tool_use', 'Bash: npm test'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const call = (sender.sendResponse as any).mock.calls[0];
+    const text = call[1].text;
+    expect(text).toContain('Recent activity:');
+    expect(text).toContain('> Bash: npm test');
+    expect(text).not.toContain('Last output:');
   });
 
   it('flush sends pending progress', async () => {
@@ -201,5 +272,22 @@ describe('ProgressStreamer', () => {
 
     // Flush also should not throw
     await streamer.flush();
+  });
+
+  it('does not include tool timeline in concise mode with only text chunks', async () => {
+    const streamer = createProgressStreamer({
+      chatId: 123,
+      sender,
+      mode: 'concise',
+      throttleMs: 0,
+    });
+
+    streamer.onChunk(makeChunk('text', 'some text'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const call = (sender.sendResponse as any).mock.calls[0];
+    const text = call[1].text;
+    expect(text).not.toContain('>');
+    expect(text).toMatch(/Working\.\.\. \d+s \| 1 updates/);
   });
 });
