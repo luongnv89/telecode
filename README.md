@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <strong>Code from anywhere.</strong><br/><br/>
   Telegram bot that wraps Claude Code for remote macOS control.<br/>
   Send prompts, manage sessions, and receive sanitized responses — all from your phone.
 </p>
