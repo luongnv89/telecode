@@ -21,6 +21,8 @@ All configuration is provided via environment variables. Create a `.env` file in
 | `MAX_SESSIONS` | number | `5` | Maximum concurrent sessions (1-10) |
 | `SESSIONS_FILE_PATH` | string | `~/Library/Application Support/telecode/sessions.json` | Path for session persistence file |
 | `BOOKMARKS_FILE_PATH` | string | `~/Library/Application Support/telecode/bookmarks.json` | Path for bookmarks file |
+| `DEFAULT_DISPLAY_MODE` | `concise` \| `verbose` | `concise` | Default progress display mode for new users |
+| `PERMISSION_TIMEOUT_MS` | number | `60000` (60s) | Timeout for tool permission requests before auto-deny |
 
 ## Example `.env`
 
@@ -30,6 +32,8 @@ ALLOWED_USER_IDS=123456789,987654321
 LOG_PATH=/var/log/telecode
 SESSION_TIMEOUT_MS=3600000
 MAX_SESSIONS=3
+DEFAULT_DISPLAY_MODE=verbose
+PERMISSION_TIMEOUT_MS=120000
 ```
 
 ## Validation
@@ -41,6 +45,8 @@ Validation rules:
 - `ALLOWED_USER_IDS` must parse to an array of positive integers
 - `SESSION_TIMEOUT_MS` must parse to a positive integer
 - `MAX_SESSIONS` must parse to a positive integer between 1 and 10
+- `DEFAULT_DISPLAY_MODE` must be `concise` or `verbose`
+- `PERMISSION_TIMEOUT_MS` must parse to a positive integer
 
 ## Data Paths
 

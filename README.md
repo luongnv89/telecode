@@ -94,9 +94,11 @@ See [Architecture](docs/architecture.md) for the full system design.
 | [Architecture](docs/architecture.md) | System design, module overview, data flow |
 | [Commands](docs/commands.md) | Full command reference with examples |
 | [Configuration](docs/configuration.md) | Environment variables and defaults |
+| [Deployment](docs/DEPLOYMENT.md) | Production setup, install script, LaunchAgent |
 | [Development](docs/development.md) | Local setup, testing, project conventions |
-| [Security](docs/security.md) | Sanitization pipeline, auth, lock model |
+| [Security](docs/security.md) | Sanitization pipeline, auth, permission bridge, lock model |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
+| [Changelog](docs/CHANGELOG.md) | Version history |
 
 ## Tech Stack
 

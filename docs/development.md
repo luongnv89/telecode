@@ -39,14 +39,18 @@ npm run dev
 src/
 ├── index.ts              # Entry point — bootstrap and start
 ├── config.ts             # Zod-validated environment config
+├── version.ts            # Version string constant
 ├── telegram/             # Telegram bot integration
 │   ├── bot.ts            # Bot factory and wiring
 │   ├── sender.ts         # Message sending with retry
 │   ├── keyboards.ts      # Inline keyboard builders
+│   ├── permission-bridge.ts  # SDK canUseTool ↔ Telegram inline buttons
+│   ├── progress-streamer.ts  # Typing indicator and progress updates
+│   ├── user-preferences.ts   # Per-user display mode (concise/verbose)
 │   ├── commands/
 │   │   ├── router.ts     # Command parsing and routing
 │   │   ├── handlers.ts   # All command implementations
-│   │   └── callbacks.ts  # Inline button handlers
+│   │   └── callbacks.ts  # Inline button handlers (actions + permissions)
 │   └── middleware/
 │       └── auth.ts       # User allowlist check
 ├── session/              # Multi-session management
@@ -59,7 +63,7 @@ src/
 ├── lock/
 │   └── manager.ts        # Per-session connection lock
 ├── claude/               # Claude Code bridge
-│   ├── adapter.ts        # SDK wrapper
+│   ├── adapter.ts        # SDK wrapper (passes canUseTool for permission bridge)
 │   ├── session-manager.ts
 │   └── message-parser.ts
 ├── sanitize/             # Output safety

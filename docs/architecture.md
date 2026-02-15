@@ -13,12 +13,18 @@ graph TB
     Auth --> Callbacks[Callback Handler]
     Router --> Handlers[Command Handlers]
     Callbacks --> Handlers
+    Callbacks -->|perm: callbacks| PB[Permission Bridge]
     Handlers --> Registry[Session Registry]
     Registry --> Lock[Lock Manager]
     Registry --> SM[Session Manager]
+    Registry -->|canUseTool| PB
     SM --> Adapter[Claude Adapter]
+    Adapter -->|canUseTool| PB
     Adapter --> CC[Claude Code SDK]
-    Handlers --> SafeSender[Safe Sender]
+    Handlers --> Streamer[Progress Streamer]
+    Streamer --> SafeSender[Safe Sender]
+    Handlers --> SafeSender
+    PB --> SafeSender
     SafeSender --> Pipeline[Sanitization Pipeline]
     Pipeline --> Regex[Regex Masking]
     Regex --> Sender[Telegram Sender]
@@ -38,9 +44,12 @@ Handles all Telegram integration: receiving updates, parsing commands, routing t
 | `bot.ts` | Bot factory, dependency injection, lifecycle |
 | `sender.ts` | Message sending with retry, truncation, inline keyboards |
 | `keyboards.ts` | Inline button builders for session actions |
+| `permission-bridge.ts` | Async bridge between SDK `canUseTool` callbacks and Telegram inline buttons |
+| `progress-streamer.ts` | Real-time typing indicator and progress messages during Claude execution |
+| `user-preferences.ts` | Per-user display mode (concise/verbose) |
 | `commands/router.ts` | Parse incoming text, route to handler functions |
 | `commands/handlers.ts` | All command logic (20+ commands) |
-| `commands/callbacks.ts` | Inline button callback query handler |
+| `commands/callbacks.ts` | Inline button callback query handler (actions + permission decisions) |
 | `middleware/auth.ts` | User allowlist authentication |
 
 ### Session Layer (`src/session/`)
@@ -70,7 +79,7 @@ Bridges to Claude Code via the Anthropic SDK.
 
 | File | Purpose |
 |---|---|
-| `adapter.ts` | Start, attach, send, reset, stop Claude sessions |
+| `adapter.ts` | Start, attach, send, reset, stop Claude sessions; passes `canUseTool` to SDK |
 | `session-manager.ts` | State machine for Claude session lifecycle |
 | `message-parser.ts` | Parse Claude output stream into structured chunks |
 
@@ -155,9 +164,31 @@ stateDiagram-v2
     stopped --> [*]
 ```
 
+## Permission Bridge Flow
+
+When Claude Code requests permission to use a tool (e.g., `Bash`, `Write`), the SDK's `canUseTool` callback is routed through the permission bridge:
+
+```mermaid
+sequenceDiagram
+    participant CC as Claude Code SDK
+    participant PB as Permission Bridge
+    participant TG as Telegram User
+
+    CC->>PB: canUseTool(toolName, input)
+    PB->>TG: Send inline buttons (Allow / Deny / Always Allow)
+    Note over PB: Promise awaits user decision
+    TG->>PB: Button callback (perm:allow:<id>)
+    PB->>CC: { behavior: 'allow' }
+    Note over PB: Timeout auto-denies after PERMISSION_TIMEOUT_MS
+```
+
+The bridge creates a deferred promise per request. Each request gets a unique ID embedded in the callback button data. On timeout or abort, the request auto-denies without interrupting the session.
+
 ## Key Design Decisions
 
 - **Single choke point for outbound**: All responses flow through `SafeSender`, making sanitization bypass impossible.
 - **Per-session locks**: Each session has its own lock manager; only the lock owner can send commands.
 - **Metadata-driven UI**: Response envelopes carry optional `metadata` fields that the sender uses to attach inline keyboards, keeping handler logic decoupled from presentation.
 - **Graceful degradation**: If sanitization fails, the message is blocked entirely and a generic error is sent instead.
+- **Async permission bridge**: Tool approval requests are bridged to Telegram inline buttons via deferred promises, allowing the SDK to block until the user responds without polling.
+- **Progress streaming**: Real-time typing indicators and tool activity summaries keep the user informed during long-running Claude operations.
