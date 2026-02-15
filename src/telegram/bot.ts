@@ -94,6 +94,34 @@ export async function startBot({ bot, monitor }: BotWithMonitor): Promise<void> 
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
+  // Register command menu with Telegram so users see suggestions when typing /
+  await bot.api.setMyCommands([
+    { command: 'start', description: 'Start a new Claude Code session' },
+    { command: 'status', description: 'Show current session status' },
+    { command: 'stop', description: 'Stop the focused session' },
+    { command: 'new_session', description: 'Reset the current session' },
+    { command: 'sessions', description: 'List all active sessions' },
+    { command: 'switch', description: 'Switch to a different session' },
+    { command: 'remove', description: 'Remove a session' },
+    { command: 'discover', description: 'Discover running Claude Code sessions' },
+    { command: 'attach', description: 'Attach to a discovered session' },
+    { command: 'cd', description: 'Change directory (creates session)' },
+    { command: 'goto', description: 'Go to a specific session' },
+    { command: 'back', description: 'Return to previous session' },
+    { command: 'resume', description: 'Resume a session' },
+    { command: 'bookmark', description: 'Save a directory bookmark' },
+    { command: 'bookmarks', description: 'List all bookmarks' },
+    { command: 'open', description: 'Open a bookmarked directory' },
+    { command: 'unbookmark', description: 'Remove a bookmark' },
+    { command: 'verbose', description: 'Set verbose display mode' },
+    { command: 'concise', description: 'Set concise display mode' },
+    { command: 'cc_clear', description: 'Send /clear to Claude Code' },
+    { command: 'cc_compact', description: 'Send /compact to Claude Code' },
+    { command: 'cc_context', description: 'Send /context to Claude Code' },
+    { command: 'cc_resume', description: 'Send /resume to Claude Code' },
+    { command: 'version', description: 'Show bot version' },
+  ]);
+
   // Start the resilience monitor
   monitor.start();
 
