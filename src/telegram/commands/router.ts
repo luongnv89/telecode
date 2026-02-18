@@ -29,6 +29,8 @@ export interface CommandHandlers {
   verbose: CommandHandler;
   concise: CommandHandler;
   version: CommandHandler;
+  launch: CommandHandler;
+  help: CommandHandler;
 }
 
 function extractContext(ctx: Context): CommandContext | null {

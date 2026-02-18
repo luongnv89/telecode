@@ -3,7 +3,13 @@ import { config as loadDotenv } from 'dotenv';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-loadDotenv();
+export interface ConfigOverrides {
+  envFilePath?: string;
+  telegramBotToken?: string;
+  allowedUserIds?: string;
+  defaultBackend?: string;
+  workspace?: string;
+}
 
 const DEFAULT_LOG_PATH = join(
   homedir(),
@@ -46,7 +52,7 @@ const configSchema = z.object({
   sessionTimeoutMs: z
     .string()
     .optional()
-    .default('1800000')
+    .default('86400000')
     .transform((s) => parseInt(s, 10))
     .pipe(z.number().int().positive()),
   maxSessions: z
@@ -74,7 +80,7 @@ const configSchema = z.object({
     .transform((s) => parseInt(s, 10))
     .pipe(z.number().int().positive()),
   defaultBackend: z
-    .enum(['claude', 'opencode'])
+    .enum(['claude', 'opencode', 'codex'])
     .optional()
     .default('claude'),
   opencodeBaseUrl: z
@@ -83,14 +89,26 @@ const configSchema = z.object({
   opencodeModel: z
     .string()
     .optional(),
+  workspace: z
+    .string()
+    .optional()
+    .default(homedir()),
+  allowedTools: z
+    .string()
+    .optional()
+    .default('claude')
+    .transform((s) => s.split(',').map((t) => t.trim()).filter(Boolean))
+    .pipe(z.array(z.enum(['claude', 'opencode', 'codex']))),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
 
-export function loadConfig(): AppConfig {
+export function loadConfig(overrides?: ConfigOverrides): AppConfig {
+  loadDotenv({ path: overrides?.envFilePath });
+
   const result = configSchema.safeParse({
-    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
-    allowedUserIds: process.env.ALLOWED_USER_IDS,
+    telegramBotToken: overrides?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN,
+    allowedUserIds: overrides?.allowedUserIds || process.env.ALLOWED_USER_IDS,
     logPath: process.env.LOG_PATH || undefined,
     claudeModel: process.env.CLAUDE_MODEL || undefined,
     sessionTimeoutMs: process.env.SESSION_TIMEOUT_MS || undefined,
@@ -99,9 +117,11 @@ export function loadConfig(): AppConfig {
     bookmarksFilePath: process.env.BOOKMARKS_FILE_PATH || undefined,
     defaultDisplayMode: process.env.DEFAULT_DISPLAY_MODE || undefined,
     permissionTimeoutMs: process.env.PERMISSION_TIMEOUT_MS || undefined,
-    defaultBackend: process.env.DEFAULT_BACKEND || undefined,
+    defaultBackend: overrides?.defaultBackend || process.env.DEFAULT_BACKEND || undefined,
     opencodeBaseUrl: process.env.OPENCODE_BASE_URL || undefined,
     opencodeModel: process.env.OPENCODE_MODEL || undefined,
+    workspace: overrides?.workspace || process.env.WORKSPACE || undefined,
+    allowedTools: process.env.ALLOWED_TOOLS || undefined,
   });
 
   if (!result.success) {

@@ -8,20 +8,23 @@ const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
 export interface TelegramSender {
-  sendResponse(chatId: number, envelope: ResponseEnvelope): Promise<void>;
+  sendResponse(chatId: number, envelope: ResponseEnvelope, sessionLabel?: string): Promise<void>;
   sendTypingIndicator(chatId: number): Promise<void>;
   sendMessage(chatId: number, text: string, keyboard?: InlineKeyboard): Promise<void>;
 }
 
-function formatEnvelope(envelope: ResponseEnvelope): string {
+function formatEnvelope(envelope: ResponseEnvelope, sessionLabel?: string): string {
   switch (envelope.type) {
     case 'ack':
       return `✓ Command received: /${envelope.commandType}`;
 
-    case 'progress':
-      return `⏳ ${envelope.text}`;
+    case 'progress': {
+      const prefix = sessionLabel ? `[${sessionLabel}] ` : '';
+      return `⏳ ${prefix}${envelope.text}`;
+    }
 
     case 'result': {
+      const prefix = sessionLabel ? `[${sessionLabel}] ` : '';
       const meta = envelope.metadata;
       if (meta?.durationMs !== undefined || meta?.costUsd !== undefined) {
         const parts: string[] = [];
@@ -31,13 +34,15 @@ function formatEnvelope(envelope: ResponseEnvelope): string {
         if (meta.costUsd !== undefined) {
           parts.push(`$${meta.costUsd.toFixed(3)}`);
         }
-        return `✅ Result (${parts.join(', ')}):\n\n${envelope.text}`;
+        return `✅ ${prefix}Result (${parts.join(', ')}):\n\n${envelope.text}`;
       }
-      return envelope.text;
+      return `${prefix}${envelope.text}`;
     }
 
-    case 'error':
-      return `❌ ${envelope.code}: ${envelope.message}`;
+    case 'error': {
+      const prefix = sessionLabel ? `[${sessionLabel}] ` : '';
+      return `❌ ${prefix}${envelope.code}: ${envelope.message}`;
+    }
 
     case 'status': {
       const lines = [
@@ -88,8 +93,8 @@ async function sendWithRetry(
 
 export function createTelegramSender(bot: Bot): TelegramSender {
   return {
-    async sendResponse(chatId: number, envelope: ResponseEnvelope): Promise<void> {
-      const text = truncateMessage(formatEnvelope(envelope));
+    async sendResponse(chatId: number, envelope: ResponseEnvelope, sessionLabel?: string): Promise<void> {
+      const text = truncateMessage(formatEnvelope(envelope, sessionLabel));
       const keyboard = getKeyboardForEnvelope(envelope);
       await sendWithRetry(bot, chatId, text, keyboard);
     },

@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs';
-import { dirname } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type { PersistedRegistryState, SessionMetadata } from '../types/session.js';
 import type { SessionRegistry } from './registry.js';
 import type { FocusManager } from './focus-manager.js';
 
-const PERSISTENCE_VERSION = 3;
+const PERSISTENCE_VERSION = 4;
 
 export interface PersistenceConfig {
   filePath: string;
@@ -43,6 +43,20 @@ export class SessionPersistence {
           }
         }
         state.version = 3;
+      }
+
+      // v3→v4 migration: add label
+      if (state.version === 3) {
+        console.log('[persistence] Migrating v3 → v4 (adding session label)');
+        for (const s of state.sessions) {
+          if (!s.label) {
+            const bt = s.backendType ?? 'claude';
+            s.label = s.name
+              ? `${s.name}/${bt}`
+              : `${basename(s.workingDirectory)}/${bt}`;
+          }
+        }
+        state.version = 4;
       }
 
       if (state.version !== PERSISTENCE_VERSION) {
@@ -84,6 +98,7 @@ export class SessionPersistence {
             startedAt: session.startedAt.toISOString(),
             lastActivityAt: session.lastActivityAt.toISOString(),
             backendType: session.backendType ?? entry.backendType ?? 'claude',
+            label: entry.label,
           });
         }
       }

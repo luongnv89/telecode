@@ -87,6 +87,8 @@ export function createBot(deps: BotDeps): BotWithMonitor {
     bookmarkStore,
     sessionDiscovery,
     userPreferences,
+    workspace: config.workspace,
+    allowedTools: config.allowedTools,
   });
 
   // Register auth middleware — runs before any command handlers
@@ -101,6 +103,8 @@ export function createBot(deps: BotDeps): BotWithMonitor {
     sender: safeSender,
     sessionRegistry,
     focusManager,
+    workspace: config.workspace,
+    allowedTools: config.allowedTools,
   });
 
   return { bot, monitor };
@@ -118,30 +122,18 @@ export async function startBot({ bot, monitor }: BotWithMonitor): Promise<void> 
 
   // Register command menu with Telegram so users see suggestions when typing /
   await bot.api.setMyCommands([
-    { command: 'start', description: 'Start a new session (--backend=opencode)' },
-    { command: 'status', description: 'Show current session status' },
-    { command: 'stop', description: 'Stop the focused session' },
-    { command: 'new_session', description: 'Reset the current session' },
+    { command: 'launch', description: 'Start a new session (select folder + tool)' },
     { command: 'sessions', description: 'List all active sessions' },
-    { command: 'switch', description: 'Switch to a different session' },
-    { command: 'remove', description: 'Remove a session' },
-    { command: 'discover', description: 'Discover running Claude Code sessions' },
-    { command: 'attach', description: 'Attach to a discovered session' },
-    { command: 'cd', description: 'Change directory (creates session)' },
-    { command: 'goto', description: 'Go to a specific session' },
-    { command: 'back', description: 'Return to previous session' },
-    { command: 'resume', description: 'Resume a session' },
-    { command: 'bookmark', description: 'Save a directory bookmark' },
-    { command: 'bookmarks', description: 'List all bookmarks' },
-    { command: 'open', description: 'Open a bookmarked directory' },
-    { command: 'unbookmark', description: 'Remove a bookmark' },
+    { command: 'switch', description: 'Switch between sessions' },
+    { command: 'stop', description: 'Stop the focused session' },
+    { command: 'status', description: 'Show session status' },
+    { command: 'help', description: 'Show available commands' },
+    { command: 'new_session', description: 'Reset the current session' },
     { command: 'verbose', description: 'Set verbose display mode' },
     { command: 'concise', description: 'Set concise display mode' },
+    { command: 'version', description: 'Show bot version' },
     { command: 'cc_clear', description: 'Send /clear to Claude Code' },
     { command: 'cc_compact', description: 'Send /compact to Claude Code' },
-    { command: 'cc_context', description: 'Send /context to Claude Code' },
-    { command: 'cc_resume', description: 'Send /resume to Claude Code' },
-    { command: 'version', description: 'Show bot version' },
   ]);
 
   // Start the resilience monitor

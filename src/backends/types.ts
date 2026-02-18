@@ -1,6 +1,6 @@
 import type { SessionState } from '../types/session.js';
 
-export type BackendType = 'claude' | 'opencode';
+export type BackendType = 'claude' | 'opencode' | 'codex';
 
 export interface AdapterOutputChunk {
   type: 'text' | 'tool_use' | 'tool_result';

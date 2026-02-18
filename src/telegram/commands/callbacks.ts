@@ -1,7 +1,11 @@
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { Bot } from 'grammy';
+import { InlineKeyboard } from 'grammy';
 import type { CommandHandlers } from './router.js';
 import type { TelegramSender } from '../sender.js';
 import type { ValidatedCommand } from '../../types/commands.js';
+import type { BackendType } from '../../backends/types.js';
 import type { SessionRegistry } from '../../session/registry.js';
 import type { FocusManager } from '../../session/focus-manager.js';
 import type { PermissionDecision } from '../permission-bridge.js';
@@ -34,11 +38,24 @@ function parsePermCallback(data: string): { decision: PermissionDecision; reques
   return { decision: decision as PermissionDecision, requestId };
 }
 
+function getWorkspaceDirs(workspace: string): string[] {
+  try {
+    return readdirSync(workspace, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
+
 export interface CallbackDeps {
   handlers: CommandHandlers;
   sender: TelegramSender;
   sessionRegistry: SessionRegistry;
   focusManager: FocusManager;
+  workspace?: string;
+  allowedTools?: BackendType[];
 }
 
 export function registerCallbacks(
@@ -82,6 +99,148 @@ export function registerCallbacks(
         await sender.sendMessage(chatId, `${label} — permission resolved.`);
       } else {
         await sender.sendMessage(chatId, '⚠️ Permission request already resolved or expired.');
+      }
+      return;
+    }
+
+    // Handle launch callbacks
+    if (data.startsWith('launch:')) {
+      await ctx.answerCallbackQuery();
+      const workspace = deps.workspace;
+      const allowedTools = deps.allowedTools ?? ['claude' as BackendType];
+
+      if (!workspace) {
+        await sender.sendMessage(chatId, '❌ Workspace not configured.');
+        return;
+      }
+
+      if (data.startsWith('launch:f:')) {
+        // Phase 1: folder selected → show tool selection or create session
+        const folderIndex = parseInt(data.slice('launch:f:'.length), 10);
+        const dirs = getWorkspaceDirs(workspace);
+
+        if (isNaN(folderIndex) || folderIndex < 0 || folderIndex >= dirs.length) {
+          await sender.sendMessage(chatId, '❌ Invalid folder selection. Please use /launch again.');
+          return;
+        }
+
+        const folderName = dirs[folderIndex];
+
+        if (allowedTools.length === 1) {
+          // Only one tool — immediately create session
+          const fullPath = resolve(workspace, folderName);
+          const validated: ValidatedCommand = {
+            command: {
+              type: 'start_session',
+              workingDir: fullPath,
+              name: folderName,
+              backend: allowedTools[0],
+            },
+            context: {
+              userId,
+              chatId,
+              messageId: ctx.callbackQuery.message?.message_id ?? 0,
+              timestamp: new Date(),
+              rawText: `[launch:${folderName}:${allowedTools[0]}]`,
+            },
+          };
+
+          const response = await handlers.start_session(validated);
+          if (response) {
+            await sender.sendResponse(chatId, response);
+          }
+        } else {
+          // Multiple tools — show tool selection
+          const keyboard = new InlineKeyboard();
+          for (const tool of allowedTools) {
+            keyboard.text(tool, `launch:t:${tool}:${folderIndex}`).row();
+          }
+          await sender.sendMessage(chatId, `Select a tool for ${folderName}:`, keyboard);
+        }
+        return;
+      }
+
+      if (data.startsWith('launch:t:')) {
+        // Phase 2: tool selected → create session
+        const rest = data.slice('launch:t:'.length);
+        const lastColon = rest.lastIndexOf(':');
+        if (lastColon === -1) {
+          await sender.sendMessage(chatId, '❌ Invalid tool selection. Please use /launch again.');
+          return;
+        }
+
+        const tool = rest.slice(0, lastColon) as BackendType;
+        const folderIndex = parseInt(rest.slice(lastColon + 1), 10);
+
+        if (!allowedTools.includes(tool)) {
+          await sender.sendMessage(chatId, `❌ Tool "${tool}" is not in the allowed tools list.`);
+          return;
+        }
+
+        const dirs = getWorkspaceDirs(workspace);
+        if (isNaN(folderIndex) || folderIndex < 0 || folderIndex >= dirs.length) {
+          await sender.sendMessage(chatId, '❌ Invalid folder selection. Please use /launch again.');
+          return;
+        }
+
+        const folderName = dirs[folderIndex];
+        const fullPath = resolve(workspace, folderName);
+
+        const validated: ValidatedCommand = {
+          command: {
+            type: 'start_session',
+            workingDir: fullPath,
+            name: folderName,
+            backend: tool,
+          },
+          context: {
+            userId,
+            chatId,
+            messageId: ctx.callbackQuery.message?.message_id ?? 0,
+            timestamp: new Date(),
+            rawText: `[launch:${folderName}:${tool}]`,
+          },
+        };
+
+        const response = await handlers.start_session(validated);
+        if (response) {
+          await sender.sendResponse(chatId, response);
+        }
+        return;
+      }
+
+      await sender.sendMessage(chatId, '❌ Unknown launch action.');
+      return;
+    }
+
+    // Handle switch callbacks
+    if (data.startsWith('switch:s:')) {
+      await ctx.answerCallbackQuery();
+
+      const sessionIndex = parseInt(data.slice('switch:s:'.length), 10);
+      const focusedId = focusManager.getFocusedSessionId(userId);
+      const sessionList = sessionRegistry.listSessions(focusedId);
+
+      if (isNaN(sessionIndex) || sessionIndex < 0 || sessionIndex >= sessionList.length) {
+        await sender.sendMessage(chatId, '❌ Invalid session selection. Use /switch again.');
+        return;
+      }
+
+      const target = sessionList[sessionIndex];
+      const validated: ValidatedCommand = {
+        command: { type: 'switch_session', target: target.sessionId },
+        context: {
+          userId,
+          chatId,
+          messageId: ctx.callbackQuery.message?.message_id ?? 0,
+          timestamp: new Date(),
+          rawText: `[switch:${target.label}]`,
+        },
+      };
+
+      const response = await handlers.switch_session(validated);
+      if (response) {
+        await sender.sendResponse(chatId, response);
       }
       return;
     }

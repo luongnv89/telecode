@@ -8,7 +8,7 @@ export type BotCommand =
   | { type: 'new_session' }
   | { type: 'claude_command'; ccCommand: ClaudeCodeCommand }
   | { type: 'list_sessions' }
-  | { type: 'switch_session'; target: string }
+  | { type: 'switch_session'; target?: string }
   | { type: 'remove_session'; target: string }
   | { type: 'discover' }
   | { type: 'attach'; target: string }
@@ -22,7 +22,9 @@ export type BotCommand =
   | { type: 'unbookmark'; name: string }
   | { type: 'verbose' }
   | { type: 'concise' }
-  | { type: 'version' };
+  | { type: 'version' }
+  | { type: 'launch' }
+  | { type: 'help' };
 
 export const CLAUDE_CODE_COMMANDS = ['clear', 'compact', 'context', 'resume'] as const;
 export type ClaudeCodeCommand = (typeof CLAUDE_CODE_COMMANDS)[number];
@@ -77,10 +79,10 @@ export function parseCommand(text: string): ParseResult<BotCommand> {
       for (const part of parts) {
         if (part.startsWith('--backend=')) {
           const val = part.slice('--backend='.length);
-          if (val === 'claude' || val === 'opencode') {
+          if (val === 'claude' || val === 'opencode' || val === 'codex') {
             backend = val;
           } else {
-            return { ok: false, error: `Invalid backend: "${val}". Must be "claude" or "opencode".` };
+            return { ok: false, error: `Invalid backend: "${val}". Must be "claude", "opencode", or "codex".` };
           }
         } else {
           remaining.push(part);
@@ -112,7 +114,7 @@ export function parseCommand(text: string): ParseResult<BotCommand> {
 
     case '/switch':
       if (!args) {
-        return { ok: false, error: '/switch requires a session ID or name. Usage: /switch <name-or-id>' };
+        return { ok: true, value: { type: 'switch_session' } };
       }
       return { ok: true, value: { type: 'switch_session', target: args } };
 
@@ -199,10 +201,16 @@ export function parseCommand(text: string): ParseResult<BotCommand> {
     case '/version':
       return { ok: true, value: { type: 'version' } };
 
+    case '/launch':
+      return { ok: true, value: { type: 'launch' } };
+
+    case '/help':
+      return { ok: true, value: { type: 'help' } };
+
     default:
       return {
         ok: false,
-        error: `Unknown command: ${command}. Available commands: /start_session, /status, /stop, /new_session, /sessions, /switch, /remove, /cc_clear, /cc_compact, /cc_context, /cc_resume, /discover, /attach, /cd, /goto, /back, /resume, /bookmark, /bookmarks, /open, /unbookmark, /verbose, /concise, /version`,
+        error: `Unknown command: ${command}. Use /help to see available commands.`,
       };
   }
 }

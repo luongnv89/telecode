@@ -12,6 +12,7 @@ export interface ProgressStreamerConfig {
   throttleMs?: number;
   maxPreviewChars?: number;
   maxTimelineItems?: number;
+  sessionLabel?: string;
 }
 
 export interface ProgressStreamer {
@@ -84,7 +85,7 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
   async function sendProgress(): Promise<void> {
     try {
       const text = formatMessage();
-      await config.sender.sendResponse(config.chatId, createProgress(text));
+      await config.sender.sendResponse(config.chatId, createProgress(text), config.sessionLabel);
       lastSendTime = Date.now();
       pendingSend = false;
     } catch {

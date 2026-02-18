@@ -217,6 +217,23 @@ step "Building TypeScript project"
 npm run build
 success "Build complete (dist/index.js)"
 
+# ── Link CLI globally ────────────────────────────────────────────────────────
+step "Linking telecode CLI"
+
+if npm link --loglevel=warn 2>/dev/null; then
+    success "'telecode' command is now available globally"
+else
+    warn "npm link failed — you can still run: node ${PROJECT_DIR}/dist/cli.js"
+    warn "To retry manually: cd ${PROJECT_DIR} && npm link"
+fi
+
+# Verify telecode is in PATH
+if command -v telecode &>/dev/null; then
+    success "Verified: $(telecode version 2>/dev/null || echo 'telecode in PATH')"
+else
+    warn "'telecode' not found in PATH. You may need to restart your shell."
+fi
+
 # ── Environment configuration ────────────────────────────────────────────────
 step "Checking configuration"
 
@@ -253,10 +270,16 @@ if [ ! -f "$PROJECT_DIR/dist/index.js" ]; then
 fi
 success "dist/index.js exists"
 
+if [ ! -f "$PROJECT_DIR/dist/cli.js" ]; then
+    error "Build artifact dist/cli.js not found!"
+    exit 1
+fi
+success "dist/cli.js exists"
+
 # Quick syntax check
-node --check "$PROJECT_DIR/dist/index.js" 2>/dev/null && \
-    success "dist/index.js passes syntax check" || \
-    warn "dist/index.js syntax check had warnings"
+node --check "$PROJECT_DIR/dist/cli.js" 2>/dev/null && \
+    success "dist/cli.js passes syntax check" || \
+    warn "dist/cli.js syntax check had warnings"
 
 # ── Service installation ─────────────────────────────────────────────────────
 if $INSTALL_SERVICE; then
@@ -293,7 +316,8 @@ if $INSTALL_SERVICE; then
     <key>ProgramArguments</key>
     <array>
         <string>${NODE_BIN}</string>
-        <string>${PROJECT_DIR}/dist/index.js</string>
+        <string>${PROJECT_DIR}/dist/cli.js</string>
+        <string>start</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -381,8 +405,12 @@ if $INSTALL_SERVICE; then
 fi
 
 printf "\n${BOLD}Quick reference:${NC}\n"
-printf "  %-42s %s\n" "Run manually:" "cd $PROJECT_DIR && npm run dev"
-printf "  %-42s %s\n" "Run production:" "cd $PROJECT_DIR && node dist/index.js"
+printf "  %-42s %s\n" "Run manually:" "telecode start"
+printf "  %-42s %s\n" "Run as daemon:" "telecode start --daemon"
+printf "  %-42s %s\n" "Stop daemon:" "telecode stop"
+printf "  %-42s %s\n" "Check status:" "telecode status"
+printf "  %-42s %s\n" "Show config:" "telecode config"
+printf "  %-42s %s\n" "Dev mode:" "cd $PROJECT_DIR && npm run dev"
 
 if $INSTALL_SERVICE; then
     printf "\n${BOLD}Service commands:${NC}\n"

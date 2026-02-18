@@ -11,12 +11,20 @@ logs/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / local agent config
 .vscode/
 .idea/
+.claude/
+.codex/
 *.swp
 *.swo
 *~
+
+# Env backups & stray config
+.envbk
+.env.*
+!.env.example
+OPENCODE_CONFIG_CONTENT
 
 # Debug
 *.log

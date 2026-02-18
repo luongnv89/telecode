@@ -1,6 +1,7 @@
 import type { CodingAdapter, BackendType } from './types.js';
 import { createClaudeAdapter, type ClaudeAdapterConfig } from './claude/adapter.js';
 import { createOpencodeAdapter, type OpencodeAdapterConfig } from './opencode/adapter.js';
+import { createCodexAdapter, type CodexAdapterConfig } from './codex/adapter.js';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 
 export interface BackendFactoryConfig {
@@ -31,6 +32,11 @@ export function createAdapterForBackend(config: BackendFactoryConfig): CodingAda
         cwd: config.cwd,
         canUseTool: config.canUseTool,
         allowedTools: config.allowedTools,
+      });
+
+    case 'codex':
+      return createCodexAdapter({
+        cwd: config.cwd,
       });
 
     default: {

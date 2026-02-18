@@ -1,4 +1,4 @@
-import { loadConfig } from './config.js';
+import { loadConfig, type ConfigOverrides } from './config.js';
 import { createBot, startBot } from './telegram/bot.js';
 import { createAuditWriter } from './audit/writer.js';
 import { SessionRegistry } from './session/registry.js';
@@ -7,11 +7,12 @@ import { SessionPersistence } from './session/persistence.js';
 import { createBookmarkStore } from './session/bookmarks.js';
 import { createSessionDiscovery } from './session/discovery.js';
 import { VERSION_STRING } from './version.js';
+import { fileURLToPath } from 'node:url';
 
-async function main(): Promise<void> {
+export async function main(overrides?: ConfigOverrides): Promise<void> {
   console.log(`[telecode] Telecode ${VERSION_STRING}`);
   console.log('[telecode] Loading configuration...');
-  const config = loadConfig();
+  const config = loadConfig(overrides);
 
   console.log('[telecode] Initializing session registry...');
   const sessionRegistry = new SessionRegistry({
@@ -120,7 +121,10 @@ async function main(): Promise<void> {
   await startBot(botWithMonitor);
 }
 
-main().catch((err) => {
-  console.error('[telecode] Fatal error:', err);
-  process.exit(1);
-});
+// Only auto-run when this file is the direct entry point (not when imported by cli.ts)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[telecode] Fatal error:', err);
+    process.exit(1);
+  });
+}

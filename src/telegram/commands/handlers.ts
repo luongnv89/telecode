@@ -1,7 +1,9 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { resolve, basename } from 'node:path';
 import { homedir } from 'node:os';
+import { InlineKeyboard } from 'grammy';
 import type { ValidatedCommand } from '../../types/commands.js';
+import type { BackendType } from '../../backends/types.js';
 import {
   createAck,
   createStatus,
@@ -34,6 +36,8 @@ export interface HandlerDeps {
   bookmarkStore?: BookmarkStore;
   sessionDiscovery?: SessionDiscovery;
   userPreferences?: UserPreferences;
+  workspace?: string;
+  allowedTools?: BackendType[];
 }
 
 /** Resolve a path, expanding ~ to home directory. */
@@ -143,11 +147,12 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
         schedulePersist();
 
+        const entry = sessionRegistry.getEntry(session.sessionId);
+        const sessionLabel = entry?.label ?? '';
         const displayName = name ? ` "${name}"` : '';
         const shortId = session.sessionId.slice(0, 8);
-        const backendLabel = (backend && backend !== 'claude') ? ` (${backend})` : '';
         return createResult(
-          `Session${displayName} started [${shortId}]${backendLabel} in ${workingDir}\n` +
+          `Session${displayName} started [${shortId}] [${sessionLabel}] in ${workingDir}\n` +
           `Sessions: ${sessionRegistry.size}/${sessionRegistry.maxSessions}`,
           { showButtons: true },
         );
@@ -156,7 +161,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
       }
     },
 
-    async send(cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+    async send(cmd: ValidatedCommand): Promise<ResponseEnvelope | void> {
       try {
         if (cmd.command.type !== 'send') {
           return createError('INTERNAL_ERROR', 'Expected send command');
@@ -205,11 +210,13 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           rawText: cmd.context.rawText,
         }, chatId);
 
+        const sessionLabel = entry.label;
         const mode = userPreferences?.getMode(userId) ?? 'concise';
         const streamer = createProgressStreamer({
           chatId,
           sender,
           mode,
+          sessionLabel,
         });
 
         try {
@@ -239,11 +246,13 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             return createError('CLAUDE_ERROR', result.text);
           }
 
-          return createResult(result.text, {
+          // Send the final result directly with the session label
+          await sender.sendResponse(chatId, createResult(result.text, {
             showButtons: true,
             durationMs: result.durationMs,
             costUsd: result.totalCostUsd,
-          });
+          }), sessionLabel);
+          return;
         } catch (err) {
           streamer.stop();
           throw err;
@@ -356,7 +365,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
       }
     },
 
-    async claude_command(cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+    async claude_command(cmd: ValidatedCommand): Promise<ResponseEnvelope | void> {
       try {
         if (cmd.command.type !== 'claude_command') {
           return createError('INTERNAL_ERROR', 'Expected claude_command');
@@ -402,11 +411,13 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           rawText: cmd.context.rawText,
         }, chatId);
 
+        const sessionLabel = entry.label;
         const mode = userPreferences?.getMode(userId) ?? 'concise';
         const streamer = createProgressStreamer({
           chatId,
           sender,
           mode,
+          sessionLabel,
         });
 
         try {
@@ -436,10 +447,11 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             return createError('CLAUDE_ERROR', result.text);
           }
 
-          return createResult(result.text, {
+          await sender.sendResponse(chatId, createResult(result.text, {
             durationMs: result.durationMs,
             costUsd: result.totalCostUsd,
-          });
+          }), sessionLabel);
+          return;
         } catch (err) {
           streamer.stop();
           throw err;
@@ -543,10 +555,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
         const lines = sessionList.map((s, idx) => {
           const prefix = s.isFocused ? '>' : ' ';
-          const nameStr = s.name ? ` (${s.name})` : '';
-          const shortId = s.sessionId.slice(0, 8);
-          const backendTag = s.backendType !== 'claude' ? ` [${s.backendType}]` : '';
-          return `${prefix} ${idx + 1}. [${shortId}]${nameStr}${backendTag} ${s.workingDirectory} [${s.state}]`;
+          return `${prefix} ${idx + 1}. [${s.label}] ${s.workingDirectory} [${s.state}]`;
         });
 
         const text =
@@ -560,14 +569,33 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
       }
     },
 
-    async switch_session(cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+    async switch_session(cmd: ValidatedCommand): Promise<ResponseEnvelope | void> {
       try {
         if (cmd.command.type !== 'switch_session') {
           return createError('INTERNAL_ERROR', 'Expected switch_session command');
         }
 
-        const { userId } = cmd.context;
+        const { userId, chatId } = cmd.context;
         const { target } = cmd.command;
+
+        // No target — show interactive session selection
+        if (!target) {
+          const focusedId = focusManager.getFocusedSessionId(userId);
+          const sessionList = sessionRegistry.listSessions(focusedId);
+
+          if (sessionList.length === 0) {
+            return createError('SESSION_NOT_FOUND', 'No active sessions. Use /launch or /start_session first.');
+          }
+
+          const keyboard = new InlineKeyboard();
+          sessionList.forEach((s, idx) => {
+            const focusTag = s.isFocused ? ' *' : '';
+            keyboard.text(`${s.label}${focusTag}`, `switch:s:${idx}`).row();
+          });
+
+          await sender.sendMessage(chatId, 'Select a session to switch to:', keyboard);
+          return;
+        }
 
         // Find session by name or ID
         const targetId = sessionRegistry.findSessionId(target);
@@ -582,11 +610,10 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
         schedulePersist();
 
         const entry = sessionRegistry.getEntry(targetId);
-        const nameStr = entry?.name ? ` "${entry.name}"` : '';
-        const shortId = targetId.slice(0, 8);
+        const labelStr = entry?.label ?? targetId.slice(0, 8);
 
         return createResult(
-          `Switched to session${nameStr} [${shortId}] in ${entry?.workingDirectory ?? 'unknown'}`,
+          `Switched to session [${labelStr}] in ${entry?.workingDirectory ?? 'unknown'}`,
         );
       } catch (err) {
         return handleError(err);
@@ -1014,6 +1041,56 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
     async version(_cmd: ValidatedCommand): Promise<ResponseEnvelope> {
       return createResult(`Telecode ${VERSION_STRING}`);
+    },
+
+    async launch(cmd: ValidatedCommand): Promise<ResponseEnvelope | void> {
+      try {
+        const { chatId } = cmd.context;
+        const workspaceDir = deps.workspace ?? homedir();
+
+        let entries: { name: string }[];
+        try {
+          entries = readdirSync(workspaceDir, { withFileTypes: true })
+            .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        } catch (err) {
+          return createError('INVALID_WORKING_DIR', `Cannot read workspace directory: ${workspaceDir}`);
+        }
+
+        if (entries.length === 0) {
+          return createError('INVALID_WORKING_DIR', `No directories found in workspace: ${workspaceDir}`);
+        }
+
+        const keyboard = new InlineKeyboard();
+        for (let i = 0; i < entries.length; i++) {
+          keyboard.text(entries[i].name, `launch:f:${i}`).row();
+        }
+
+        await sender.sendMessage(chatId, `Select a folder from ${workspaceDir}:`, keyboard);
+        return;
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+
+    async help(_cmd: ValidatedCommand): Promise<ResponseEnvelope> {
+      const text = [
+        'Available commands:',
+        '',
+        '/launch - Start a new session (select folder + tool)',
+        '/sessions - List all active sessions',
+        '/switch - Switch between sessions',
+        '/stop - Stop the focused session',
+        '/status - Show session status',
+        '/help - Show this help message',
+        '/new_session - Reset the current session',
+        '/verbose - Set verbose display mode',
+        '/concise - Set concise display mode',
+        '/version - Show bot version',
+        '/cc_clear - Send /clear to Claude Code',
+        '/cc_compact - Send /compact to Claude Code',
+      ].join('\n');
+      return createResult(text);
     },
   };
 }

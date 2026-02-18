@@ -30,6 +30,7 @@ export interface SessionMetadata {
   startedAt: string;
   lastActivityAt: string;
   backendType?: BackendType;
+  label?: string;
 }
 
 /** Persisted state for the full session registry. */

@@ -79,7 +79,7 @@ export function createSafeSender(deps: SafeSenderDeps): TelegramSender & Outboun
   return {
     sanitizeText,
 
-    async sendResponse(chatId: number, envelope: ResponseEnvelope): Promise<void> {
+    async sendResponse(chatId: number, envelope: ResponseEnvelope, sessionLabel?: string): Promise<void> {
       let sanitized: ResponseEnvelope;
       let totalRedactions = 0;
       try {
@@ -138,7 +138,7 @@ export function createSafeSender(deps: SafeSenderDeps): TelegramSender & Outboun
         }
       }
 
-      await innerSender.sendResponse(chatId, sanitized);
+      await innerSender.sendResponse(chatId, sanitized, sessionLabel);
     },
 
     async sendTypingIndicator(chatId: number): Promise<void> {

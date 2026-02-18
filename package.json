@@ -4,6 +4,9 @@
   "description": "Telegram bot that wraps Claude Code for remote macOS control",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "telecode": "dist/cli.js"
+  },
   "license": "MIT",
   "author": "Luong Nguyen",
   "repository": {
@@ -26,7 +29,9 @@
   ],
   "scripts": {
     "build": "tsc",
+    "postbuild": "chmod +x dist/cli.js",
     "dev": "tsx src/index.ts",
+    "dev:cli": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

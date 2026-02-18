@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { basename } from 'node:path';
 import type { CodingAdapter } from '../backends/types.js';
 import type { BackendType } from '../backends/types.js';
 import { createAdapterForBackend } from '../backends/factory.js';
@@ -7,6 +8,10 @@ import { createLockManager, type LockManager } from '../lock/manager.js';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionBridge } from '../telegram/permission-bridge.js';
 import type { Session, SessionState } from '../types/session.js';
+
+export function computeSessionLabel(workingDirectory: string, backendType: BackendType): string {
+  return `${basename(workingDirectory)}/${backendType}`;
+}
 
 export interface PermissionHandlerResult {
   canUseTool?: CanUseTool;
@@ -22,6 +27,7 @@ export interface RegistryEntry {
   workingDirectory: string;
   name?: string;
   backendType: BackendType;
+  label: string;
   permissionBridge?: PermissionBridge;
 }
 
@@ -41,6 +47,7 @@ export interface SessionListItem {
   startedAt: Date;
   isFocused: boolean;
   backendType: BackendType;
+  label: string;
 }
 
 export class SessionRegistry {
@@ -114,6 +121,8 @@ export class SessionRegistry {
 
     lock.acquire(userId, chatId, session.sessionId);
 
+    const label = name ? `${name}/${backend}` : computeSessionLabel(workingDirectory, backend);
+
     this.entries.set(session.sessionId, {
       manager,
       adapter,
@@ -121,6 +130,7 @@ export class SessionRegistry {
       workingDirectory,
       name,
       backendType: backend,
+      label,
       permissionBridge,
     });
 
@@ -178,6 +188,8 @@ export class SessionRegistry {
 
     lock.acquire(userId, chatId, session.sessionId);
 
+    const label = name ? `${name}/${backend}` : computeSessionLabel(workingDirectory, backend);
+
     this.entries.set(session.sessionId, {
       manager,
       adapter,
@@ -185,6 +197,7 @@ export class SessionRegistry {
       workingDirectory,
       name,
       backendType: backend,
+      label,
       permissionBridge,
     });
 
@@ -267,6 +280,7 @@ export class SessionRegistry {
           startedAt: session.startedAt,
           isFocused: id === focusedSessionId,
           backendType: entry.backendType,
+          label: entry.label,
         });
       }
     }
