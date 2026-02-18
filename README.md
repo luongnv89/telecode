@@ -17,8 +17,9 @@
 
 ## Features
 
-- **Multi-session** — run up to 5 concurrent Claude Code sessions with focus tracking
-- **Permission bridge** — approve or deny Claude tool usage via Telegram inline buttons
+- **Multi-backend** — use Claude Code or [OpenCode](https://opencode.ai) as your AI coding backend
+- **Multi-session** — run up to 5 concurrent sessions with focus tracking
+- **Permission bridge** — approve or deny tool usage via Telegram inline buttons
 - **Sanitized output** — two-stage pipeline (category-based + regex) blocks secrets before they reach Telegram
 - **Audit logging** — per-session JSONL logs for every command and response
 - **Session bookmarks** — save and restore working directories instantly
@@ -63,7 +64,7 @@ See [Configuration Reference](docs/configuration.md) for all options.
 
 | Command | Description |
 |---|---|
-| `/start_session [path] [name]` | Start a new Claude Code session |
+| `/start_session [path] [name] [--backend=claude\|opencode]` | Start a new coding session |
 | `/stop` | Stop the focused session |
 | `/status` | Check session status |
 | `/new_session` | Reset Claude context (fresh conversation) |
@@ -76,14 +77,14 @@ See [Command Reference](docs/commands.md) for all 20+ commands.
 ## Architecture
 
 ```
-Telegram  -->  Auth  -->  Router  -->  Handlers  -->  Claude Code
-                                          |
+Telegram  -->  Auth  -->  Router  -->  Handlers  -->  Backend Adapter
+                                          |            (Claude / OpenCode)
                                     Sanitization
                                           |
                                      Audit Log
 ```
 
-Telecode enforces a strict security pipeline: all outbound text passes through category-based sanitization and regex masking before reaching Telegram. Per-session audit logs capture every command and output event.
+Telecode enforces a strict security pipeline: all outbound text passes through category-based sanitization and regex masking before reaching Telegram. The backend adapter layer abstracts Claude Code and OpenCode behind a common interface, so adding new backends requires no changes to the Telegram or session layers.
 
 See [Architecture](docs/architecture.md) for the full system design.
 
@@ -104,9 +105,9 @@ See [Architecture](docs/architecture.md) for the full system design.
 
 - **Runtime**: Node.js 18+ / TypeScript (ES2022, strict)
 - **Telegram**: [grammy](https://grammy.dev/) bot framework
-- **AI**: [Claude Code SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
+- **AI**: [Claude Code SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), [OpenCode SDK](https://www.npmjs.com/package/@opencode-ai/sdk)
 - **Validation**: [Zod](https://zod.dev/) for config and command parsing
-- **Testing**: [Vitest](https://vitest.dev/) — 544 tests across 29 suites
+- **Testing**: [Vitest](https://vitest.dev/) — 606 tests across 32 suites
 
 ## Contributing
 

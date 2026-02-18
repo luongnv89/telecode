@@ -2,18 +2,21 @@
 
 ## Session Management
 
-### `/start_session [path] [name]`
+### `/start_session [path] [name] [--backend=claude|opencode]`
 
-Start a new Claude Code session.
+Start a new coding session.
 
 - `path` (optional): Working directory. Defaults to the server's current directory.
 - `name` (optional): Human-readable session name.
+- `--backend` (optional): AI backend to use. Defaults to `DEFAULT_BACKEND` config (which defaults to `claude`).
 
 ```
 /start_session ~/projects/myapp backend
+/start_session ~/projects/myapp myapp --backend=opencode
+/start_session --backend=opencode
 ```
 
-Returns: Session ID, working directory, active session count. Includes inline buttons.
+Returns: Session ID, backend type (if not claude), working directory, active session count. Includes inline buttons.
 
 ### `/stop`
 

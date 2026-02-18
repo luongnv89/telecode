@@ -73,6 +73,16 @@ const configSchema = z.object({
     .default('60000')
     .transform((s) => parseInt(s, 10))
     .pipe(z.number().int().positive()),
+  defaultBackend: z
+    .enum(['claude', 'opencode'])
+    .optional()
+    .default('claude'),
+  opencodeBaseUrl: z
+    .string()
+    .optional(),
+  opencodeModel: z
+    .string()
+    .optional(),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -89,6 +99,9 @@ export function loadConfig(): AppConfig {
     bookmarksFilePath: process.env.BOOKMARKS_FILE_PATH || undefined,
     defaultDisplayMode: process.env.DEFAULT_DISPLAY_MODE || undefined,
     permissionTimeoutMs: process.env.PERMISSION_TIMEOUT_MS || undefined,
+    defaultBackend: process.env.DEFAULT_BACKEND || undefined,
+    opencodeBaseUrl: process.env.OPENCODE_BASE_URL || undefined,
+    opencodeModel: process.env.OPENCODE_MODEL || undefined,
   });
 
   if (!result.success) {

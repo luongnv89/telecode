@@ -18,9 +18,12 @@ graph TB
     Registry --> Lock[Lock Manager]
     Registry --> SM[Session Manager]
     Registry -->|canUseTool| PB
-    SM --> Adapter[Claude Adapter]
-    Adapter -->|canUseTool| PB
-    Adapter --> CC[Claude Code SDK]
+    SM --> Factory[Backend Factory]
+    Factory --> ClaudeAdapter[Claude Adapter]
+    Factory --> OCAdapter[OpenCode Adapter]
+    ClaudeAdapter -->|canUseTool| PB
+    ClaudeAdapter --> CC[Claude Code SDK]
+    OCAdapter --> OC[OpenCode SDK]
     Handlers --> Streamer[Progress Streamer]
     Streamer --> SafeSender[Safe Sender]
     Handlers --> SafeSender
@@ -73,15 +76,28 @@ Enforces single-concurrent-connection policy per session.
 |---|---|
 | `manager.ts` | Acquire/release/stale-check for session locks |
 
-### Claude Layer (`src/claude/`)
+### Backend Layer (`src/backends/`)
 
-Bridges to Claude Code via the Anthropic SDK.
+Pluggable backend adapters behind a common `CodingAdapter` interface.
 
 | File | Purpose |
 |---|---|
-| `adapter.ts` | Start, attach, send, reset, stop Claude sessions; passes `canUseTool` to SDK |
-| `session-manager.ts` | State machine for Claude session lifecycle |
-| `message-parser.ts` | Parse Claude output stream into structured chunks |
+| `types.ts` | `CodingAdapter` interface, `AdapterResult`, `AdapterOutputChunk`, `BackendType` |
+| `factory.ts` | Create the correct adapter from a `BackendType` discriminator |
+| `claude/adapter.ts` | Claude Code adapter — wraps `@anthropic-ai/claude-agent-sdk`; passes `canUseTool` to SDK |
+| `claude/message-parser.ts` | Parse Claude SDK output stream into structured chunks |
+| `opencode/adapter.ts` | OpenCode adapter — wraps `@opencode-ai/sdk`; SSE event streaming + sync fallback |
+| `opencode/event-parser.ts` | Parse OpenCode SSE events into adapter chunks |
+
+### Claude Layer (`src/claude/`) — compatibility shims
+
+Backward-compatible re-exports from `src/backends/claude/` so existing imports continue to work.
+
+| File | Purpose |
+|---|---|
+| `adapter.ts` | Re-exports `createClaudeAdapter` from `backends/claude/adapter` |
+| `session-manager.ts` | State machine for session lifecycle (shared by all backends) |
+| `message-parser.ts` | Re-exports parsers from `backends/claude/message-parser` |
 
 ### Sanitization Layer (`src/sanitize/`)
 

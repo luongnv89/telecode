@@ -23,6 +23,9 @@ All configuration is provided via environment variables. Create a `.env` file in
 | `BOOKMARKS_FILE_PATH` | string | `~/Library/Application Support/telecode/bookmarks.json` | Path for bookmarks file |
 | `DEFAULT_DISPLAY_MODE` | `concise` \| `verbose` | `concise` | Default progress display mode for new users |
 | `PERMISSION_TIMEOUT_MS` | number | `60000` (60s) | Timeout for tool permission requests before auto-deny |
+| `DEFAULT_BACKEND` | `claude` \| `opencode` | `claude` | Default AI backend for new sessions |
+| `OPENCODE_BASE_URL` | string | `http://localhost:4096` | OpenCode server URL (only used when backend is `opencode`) |
+| `OPENCODE_MODEL` | string | *(server default)* | Model for OpenCode sessions (e.g., `anthropic/claude-sonnet-4-20250514`) |
 
 ## Example `.env`
 
@@ -34,6 +37,11 @@ SESSION_TIMEOUT_MS=3600000
 MAX_SESSIONS=3
 DEFAULT_DISPLAY_MODE=verbose
 PERMISSION_TIMEOUT_MS=120000
+
+# OpenCode backend (optional — only needed if you use --backend=opencode)
+DEFAULT_BACKEND=claude
+OPENCODE_BASE_URL=http://localhost:4096
+OPENCODE_MODEL=anthropic/claude-sonnet-4-20250514
 ```
 
 ## Validation
@@ -47,6 +55,7 @@ Validation rules:
 - `MAX_SESSIONS` must parse to a positive integer between 1 and 10
 - `DEFAULT_DISPLAY_MODE` must be `concise` or `verbose`
 - `PERMISSION_TIMEOUT_MS` must parse to a positive integer
+- `DEFAULT_BACKEND` must be `claude` or `opencode`
 
 ## Data Paths
 

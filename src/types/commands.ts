@@ -1,5 +1,7 @@
+import type { BackendType } from '../backends/types.js';
+
 export type BotCommand =
-  | { type: 'start_session'; workingDir?: string; name?: string }
+  | { type: 'start_session'; workingDir?: string; name?: string; backend?: BackendType }
   | { type: 'send'; prompt: string }
   | { type: 'status' }
   | { type: 'stop' }
@@ -63,17 +65,35 @@ export function parseCommand(text: string): ParseResult<BotCommand> {
   switch (command) {
     case '/start_session':
     case '/start': {
-      // Parse optional args: /start_session [workingDir] [name]
+      // Parse optional args: /start_session [workingDir] [name] [--backend=claude|opencode]
       if (!args) {
         return { ok: true, value: { type: 'start_session' } };
       }
       const parts = args.split(/\s+/).filter(p => p.length > 0);
+
+      // Extract --backend flag from parts
+      let backend: BackendType | undefined;
+      const remaining: string[] = [];
+      for (const part of parts) {
+        if (part.startsWith('--backend=')) {
+          const val = part.slice('--backend='.length);
+          if (val === 'claude' || val === 'opencode') {
+            backend = val;
+          } else {
+            return { ok: false, error: `Invalid backend: "${val}". Must be "claude" or "opencode".` };
+          }
+        } else {
+          remaining.push(part);
+        }
+      }
+
       return {
         ok: true,
         value: {
           type: 'start_session',
-          workingDir: parts[0],
-          name: parts[1],
+          workingDir: remaining[0],
+          name: remaining[1],
+          backend,
         },
       };
     }

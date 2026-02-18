@@ -107,11 +107,16 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           );
         }
 
+        const backend = cmd.command.type === 'start_session'
+          ? cmd.command.backend
+          : undefined;
+
         const session = await sessionRegistry.createSession(
           userId,
           chatId,
           workingDir,
           name,
+          backend,
         );
 
         // Auto-focus the new session
@@ -122,7 +127,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           event: 'session_started',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
-          claudeSessionId: session.claudeSessionId,
+          claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
           userId,
           chatId,
           correlationId: session.sessionId,
@@ -140,8 +145,9 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
 
         const displayName = name ? ` "${name}"` : '';
         const shortId = session.sessionId.slice(0, 8);
+        const backendLabel = (backend && backend !== 'claude') ? ` (${backend})` : '';
         return createResult(
-          `Session${displayName} started [${shortId}] in ${workingDir}\n` +
+          `Session${displayName} started [${shortId}]${backendLabel} in ${workingDir}\n` +
           `Sessions: ${sessionRegistry.size}/${sessionRegistry.maxSessions}`,
           { showButtons: true },
         );
@@ -191,7 +197,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           event: 'command_received',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
-          claudeSessionId: session.claudeSessionId,
+          claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
           userId: session.userId,
           chatId: session.chatId,
           correlationId: session.sessionId,
@@ -222,7 +228,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             event: 'output_delivered',
             timestamp: new Date().toISOString(),
             sessionId: session.sessionId,
-            claudeSessionId: session.claudeSessionId,
+            claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
             userId: session.userId,
             chatId: session.chatId,
             correlationId: session.sessionId,
@@ -320,7 +326,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             event: 'session_stopped',
             timestamp: new Date().toISOString(),
             sessionId: session.sessionId,
-            claudeSessionId: session.claudeSessionId,
+            claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
             userId: session.userId,
             chatId: session.chatId,
             correlationId: session.sessionId,
@@ -388,7 +394,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           event: 'command_received',
           timestamp: new Date().toISOString(),
           sessionId: session.sessionId,
-          claudeSessionId: session.claudeSessionId,
+          claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
           userId: session.userId,
           chatId: session.chatId,
           correlationId: session.sessionId,
@@ -419,7 +425,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             event: 'output_delivered',
             timestamp: new Date().toISOString(),
             sessionId: session.sessionId,
-            claudeSessionId: session.claudeSessionId,
+            claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
             userId: session.userId,
             chatId: session.chatId,
             correlationId: session.sessionId,
@@ -483,7 +489,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             event: 'session_reset',
             timestamp: new Date().toISOString(),
             sessionId: oldSession.sessionId,
-            claudeSessionId: oldSession.claudeSessionId,
+            claudeSessionId: oldSession.backendSessionId ?? oldSession.claudeSessionId,
             userId: oldSession.userId,
             chatId: oldSession.chatId,
             correlationId: oldSession.sessionId,
@@ -509,7 +515,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           event: 'session_started',
           timestamp: new Date().toISOString(),
           sessionId: newSession.sessionId,
-          claudeSessionId: newSession.claudeSessionId,
+          claudeSessionId: newSession.backendSessionId ?? newSession.claudeSessionId,
           userId,
           chatId,
           correlationId: newSession.sessionId,
@@ -539,7 +545,8 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
           const prefix = s.isFocused ? '>' : ' ';
           const nameStr = s.name ? ` (${s.name})` : '';
           const shortId = s.sessionId.slice(0, 8);
-          return `${prefix} ${idx + 1}. [${shortId}]${nameStr} ${s.workingDirectory} [${s.state}]`;
+          const backendTag = s.backendType !== 'claude' ? ` [${s.backendType}]` : '';
+          return `${prefix} ${idx + 1}. [${shortId}]${nameStr}${backendTag} ${s.workingDirectory} [${s.state}]`;
         });
 
         const text =
@@ -620,7 +627,7 @@ export function createCommandHandlers(deps: HandlerDeps): CommandHandlers {
             event: 'session_stopped',
             timestamp: new Date().toISOString(),
             sessionId: session.sessionId,
-            claudeSessionId: session.claudeSessionId,
+            claudeSessionId: session.backendSessionId ?? session.claudeSessionId,
             userId: session.userId,
             chatId: session.chatId,
             correlationId: session.sessionId,

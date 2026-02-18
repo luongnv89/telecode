@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager } from '../../src/claude/session-manager.js';
-import type { ClaudeAdapter } from '../../src/claude/adapter.js';
+import type { CodingAdapter } from '../../src/backends/types.js';
 
-function createMockAdapter(): ClaudeAdapter {
+function createMockAdapter(): CodingAdapter {
   return {
-    startSession: vi.fn().mockResolvedValue({ claudeSessionId: 'claude-abc' }),
+    backendType: 'claude' as const,
+    startSession: vi.fn().mockResolvedValue({ backendSessionId: 'claude-abc' }),
+    attachSession: vi.fn().mockResolvedValue({ backendSessionId: 'claude-abc' }),
     sendPrompt: vi.fn().mockResolvedValue({
       success: true,
       text: 'ok',
@@ -13,13 +15,13 @@ function createMockAdapter(): ClaudeAdapter {
       numTurns: 1,
     }),
     stopSession: vi.fn().mockResolvedValue(undefined),
-    resetSession: vi.fn().mockResolvedValue({ claudeSessionId: 'claude-def' }),
-    getStatus: vi.fn().mockReturnValue({ claudeSessionId: undefined, state: 'idle' }),
+    resetSession: vi.fn().mockResolvedValue({ backendSessionId: 'claude-def' }),
+    getStatus: vi.fn().mockReturnValue({ backendSessionId: undefined, state: 'idle' }),
   };
 }
 
 describe('SessionManager', () => {
-  let adapter: ClaudeAdapter;
+  let adapter: CodingAdapter;
   let mgr: SessionManager;
 
   beforeEach(() => {

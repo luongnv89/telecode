@@ -1,7 +1,11 @@
+import type { BackendType } from '../backends/types.js';
+
 export type SessionState = 'idle' | 'starting' | 'active' | 'busy' | 'stopping' | 'resetting' | 'stopped';
 
 export interface Session {
   sessionId: string;
+  backendSessionId?: string;
+  /** @deprecated Use backendSessionId instead */
   claudeSessionId?: string;
   userId: number;
   chatId: number;
@@ -10,11 +14,14 @@ export interface Session {
   lastActivityAt: Date;
   workingDirectory: string;
   name?: string;
+  backendType?: BackendType;
 }
 
 /** Serializable session metadata for JSON persistence. */
 export interface SessionMetadata {
   sessionId: string;
+  backendSessionId?: string;
+  /** @deprecated Use backendSessionId instead */
   claudeSessionId?: string;
   name?: string;
   workingDirectory: string;
@@ -22,6 +29,7 @@ export interface SessionMetadata {
   chatId: number;
   startedAt: string;
   lastActivityAt: string;
+  backendType?: BackendType;
 }
 
 /** Persisted state for the full session registry. */

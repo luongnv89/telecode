@@ -9,7 +9,7 @@
 import { InlineKeyboard } from 'grammy';
 import { randomUUID } from 'node:crypto';
 import type { CanUseTool, PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
-import { summarizeToolUse } from '../claude/message-parser.js';
+import { summarizeToolUse } from '../backends/claude/message-parser.js';
 
 export interface PermissionBridgeConfig {
   chatId: number;

@@ -17,6 +17,9 @@ async function main(): Promise<void> {
   const sessionRegistry = new SessionRegistry({
     maxSessions: config.maxSessions,
     claudeModel: config.claudeModel,
+    defaultBackend: config.defaultBackend,
+    opencodeBaseUrl: config.opencodeBaseUrl,
+    opencodeModel: config.opencodeModel,
   });
 
   const focusManager = new FocusManager(sessionRegistry);
@@ -40,26 +43,31 @@ async function main(): Promise<void> {
     for (const meta of savedState.sessions) {
       try {
         let session;
-        if (meta.claudeSessionId) {
-          // Try to resume with existing Claude session ID
+        const backendSessionId = meta.backendSessionId ?? meta.claudeSessionId;
+        const backendType = meta.backendType ?? 'claude';
+
+        if (backendSessionId) {
+          // Try to resume with existing backend session ID
           try {
             session = await sessionRegistry.resumeSession(
               meta.userId,
               meta.chatId,
               meta.workingDirectory,
-              meta.claudeSessionId,
+              backendSessionId,
               meta.name,
+              backendType,
             );
-            console.log(`[telecode] Resumed session [${session.sessionId.slice(0, 8)}] with Claude session ${meta.claudeSessionId.slice(0, 8)} in ${meta.workingDirectory}`);
+            console.log(`[telecode] Resumed ${backendType} session [${session.sessionId.slice(0, 8)}] with backend session ${backendSessionId.slice(0, 8)} in ${meta.workingDirectory}`);
           } catch (resumeErr) {
-            console.warn(`[telecode] Failed to resume Claude session ${meta.claudeSessionId.slice(0, 8)}, creating fresh: ${resumeErr}`);
+            console.warn(`[telecode] Failed to resume ${backendType} session ${backendSessionId.slice(0, 8)}, creating fresh: ${resumeErr}`);
             session = await sessionRegistry.createSession(
               meta.userId,
               meta.chatId,
               meta.workingDirectory,
               meta.name,
+              backendType,
             );
-            console.log(`[telecode] Created fresh session [${session.sessionId.slice(0, 8)}] in ${meta.workingDirectory}`);
+            console.log(`[telecode] Created fresh ${backendType} session [${session.sessionId.slice(0, 8)}] in ${meta.workingDirectory}`);
           }
         } else {
           session = await sessionRegistry.createSession(
@@ -67,8 +75,9 @@ async function main(): Promise<void> {
             meta.chatId,
             meta.workingDirectory,
             meta.name,
+            backendType,
           );
-          console.log(`[telecode] Restored session [${session.sessionId.slice(0, 8)}] in ${meta.workingDirectory}`);
+          console.log(`[telecode] Restored ${backendType} session [${session.sessionId.slice(0, 8)}] in ${meta.workingDirectory}`);
         }
       } catch (err) {
         console.warn(`[telecode] Failed to restore session in ${meta.workingDirectory}: ${err}`);

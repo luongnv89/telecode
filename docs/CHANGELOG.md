@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-02-18
+
+### Added
+
+- **OpenCode backend support** — use [OpenCode](https://opencode.ai) as an alternative AI coding backend alongside Claude Code
+- Pluggable `CodingAdapter` interface in `src/backends/types.ts` — makes adding new backends straightforward
+- Backend factory (`src/backends/factory.ts`) to create adapters by type
+- OpenCode adapter with SSE event streaming, sync fallback, and auto-server spawning
+- OpenCode event parser for all SSE event types (text, tool, reasoning, session lifecycle, errors)
+- `--backend=claude|opencode` flag on `/start_session` command
+- `DEFAULT_BACKEND`, `OPENCODE_BASE_URL`, `OPENCODE_MODEL` environment variables
+- Backend type shown in `/sessions` list and session start messages
+- Persistence v2→v3 migration for backend type fields
+- 62 new tests for OpenCode event parser, adapter, and backend factory (606 total across 32 suites)
+
 ## [0.1.0] - 2025-02-15
 
 ### Added

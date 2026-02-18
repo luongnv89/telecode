@@ -51,7 +51,13 @@ export function createBot(deps: BotDeps): BotWithMonitor {
   });
 
   // Set up permission handler factory so sessions can bridge permission requests to Telegram
-  sessionRegistry.setPermissionHandlerFactory((chatId) => {
+  sessionRegistry.setPermissionHandlerFactory((chatId, backendType) => {
+    if (backendType === 'opencode') {
+      // OpenCode handles tool permissions via its own mechanism (permission.updated events)
+      // No Claude-style canUseTool callback needed
+      return {};
+    }
+
     const bridge = createPermissionBridge({
       chatId,
       sendMessage: (cid, text, keyboard) => safeSender.sendMessage(cid, text, keyboard),
@@ -112,7 +118,7 @@ export async function startBot({ bot, monitor }: BotWithMonitor): Promise<void> 
 
   // Register command menu with Telegram so users see suggestions when typing /
   await bot.api.setMyCommands([
-    { command: 'start', description: 'Start a new Claude Code session' },
+    { command: 'start', description: 'Start a new session (--backend=opencode)' },
     { command: 'status', description: 'Show current session status' },
     { command: 'stop', description: 'Stop the focused session' },
     { command: 'new_session', description: 'Reset the current session' },

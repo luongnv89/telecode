@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { createClaudeAdapter, type ClaudeAdapter, type ClaudeSessionConfig } from '../claude/adapter.js';
+import type { CodingAdapter } from '../backends/types.js';
+import type { BackendType } from '../backends/types.js';
+import { createAdapterForBackend } from '../backends/factory.js';
 import { SessionManager } from '../claude/session-manager.js';
 import { createLockManager, type LockManager } from '../lock/manager.js';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
@@ -7,24 +9,28 @@ import type { PermissionBridge } from '../telegram/permission-bridge.js';
 import type { Session, SessionState } from '../types/session.js';
 
 export interface PermissionHandlerResult {
-  canUseTool: CanUseTool;
-  bridge: PermissionBridge;
+  canUseTool?: CanUseTool;
+  bridge?: PermissionBridge;
 }
 
-export type PermissionHandlerFactory = (chatId: number) => PermissionHandlerResult;
+export type PermissionHandlerFactory = (chatId: number, backendType: BackendType) => PermissionHandlerResult;
 
 export interface RegistryEntry {
   manager: SessionManager;
-  adapter: ClaudeAdapter;
+  adapter: CodingAdapter;
   lock: LockManager;
   workingDirectory: string;
   name?: string;
+  backendType: BackendType;
   permissionBridge?: PermissionBridge;
 }
 
 export interface SessionRegistryConfig {
   maxSessions: number;
   claudeModel?: string;
+  defaultBackend?: BackendType;
+  opencodeBaseUrl?: string;
+  opencodeModel?: string;
 }
 
 export interface SessionListItem {
@@ -34,6 +40,7 @@ export interface SessionListItem {
   state: SessionState;
   startedAt: Date;
   isFocused: boolean;
+  backendType: BackendType;
 }
 
 export class SessionRegistry {
@@ -62,6 +69,7 @@ export class SessionRegistry {
     chatId: number,
     workingDirectory: string,
     name?: string,
+    backendType?: BackendType,
   ): Promise<Session> {
     if (this.entries.size >= this.config.maxSessions) {
       throw new Error(
@@ -79,24 +87,30 @@ export class SessionRegistry {
       }
     }
 
+    const backend = backendType ?? this.config.defaultBackend ?? 'claude';
+
     let permissionBridge: PermissionBridge | undefined;
     let canUseTool: CanUseTool | undefined;
 
     if (this.permissionHandlerFactory) {
-      const result = this.permissionHandlerFactory(chatId);
+      const result = this.permissionHandlerFactory(chatId, backend);
       canUseTool = result.canUseTool;
       permissionBridge = result.bridge;
     }
 
-    const adapter = createClaudeAdapter({
-      model: this.config.claudeModel,
-      cwd: workingDirectory,
+    const adapter = createAdapterForBackend({
+      backend,
+      claudeModel: this.config.claudeModel,
       canUseTool,
+      cwd: workingDirectory,
+      opencodeBaseUrl: this.config.opencodeBaseUrl,
+      opencodeModel: this.config.opencodeModel,
     });
     const manager = new SessionManager(adapter);
     const lock = createLockManager();
 
     const session = await manager.startSession(userId, chatId, workingDirectory, name);
+    session.backendType = backend;
 
     lock.acquire(userId, chatId, session.sessionId);
 
@@ -106,19 +120,21 @@ export class SessionRegistry {
       lock,
       workingDirectory,
       name,
+      backendType: backend,
       permissionBridge,
     });
 
     return session;
   }
 
-  /** Resume a session by attaching to an existing Claude session ID. */
+  /** Resume a session by attaching to an existing backend session ID. */
   async resumeSession(
     userId: number,
     chatId: number,
     workingDirectory: string,
-    claudeSessionId: string,
+    backendSessionId: string,
     name?: string,
+    backendType?: BackendType,
   ): Promise<Session> {
     if (this.entries.size >= this.config.maxSessions) {
       throw new Error(
@@ -135,24 +151,30 @@ export class SessionRegistry {
       }
     }
 
+    const backend = backendType ?? this.config.defaultBackend ?? 'claude';
+
     let permissionBridge: PermissionBridge | undefined;
     let canUseTool: CanUseTool | undefined;
 
     if (this.permissionHandlerFactory) {
-      const result = this.permissionHandlerFactory(chatId);
+      const result = this.permissionHandlerFactory(chatId, backend);
       canUseTool = result.canUseTool;
       permissionBridge = result.bridge;
     }
 
-    const adapter = createClaudeAdapter({
-      model: this.config.claudeModel,
-      cwd: workingDirectory,
+    const adapter = createAdapterForBackend({
+      backend,
+      claudeModel: this.config.claudeModel,
       canUseTool,
+      cwd: workingDirectory,
+      opencodeBaseUrl: this.config.opencodeBaseUrl,
+      opencodeModel: this.config.opencodeModel,
     });
     const manager = new SessionManager(adapter);
     const lock = createLockManager();
 
-    const session = await manager.resumeSession(userId, chatId, workingDirectory, claudeSessionId, name);
+    const session = await manager.resumeSession(userId, chatId, workingDirectory, backendSessionId, name);
+    session.backendType = backend;
 
     lock.acquire(userId, chatId, session.sessionId);
 
@@ -162,6 +184,7 @@ export class SessionRegistry {
       lock,
       workingDirectory,
       name,
+      backendType: backend,
       permissionBridge,
     });
 
@@ -172,11 +195,11 @@ export class SessionRegistry {
   async attachSession(
     userId: number,
     chatId: number,
-    claudeSessionId: string,
+    backendSessionId: string,
     projectPath: string,
     name?: string,
   ): Promise<Session> {
-    return this.resumeSession(userId, chatId, projectPath, claudeSessionId, name);
+    return this.resumeSession(userId, chatId, projectPath, backendSessionId, name);
   }
 
   getEntry(sessionId: string): RegistryEntry | undefined {
@@ -243,6 +266,7 @@ export class SessionRegistry {
           state: session.state,
           startedAt: session.startedAt,
           isFocused: id === focusedSessionId,
+          backendType: entry.backendType,
         });
       }
     }

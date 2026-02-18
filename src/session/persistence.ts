@@ -4,7 +4,7 @@ import type { PersistedRegistryState, SessionMetadata } from '../types/session.j
 import type { SessionRegistry } from './registry.js';
 import type { FocusManager } from './focus-manager.js';
 
-const PERSISTENCE_VERSION = 2;
+const PERSISTENCE_VERSION = 3;
 
 export interface PersistenceConfig {
   filePath: string;
@@ -29,6 +29,20 @@ export class SessionPersistence {
       if (state.version === 1) {
         console.log('[persistence] Migrating v1 → v2 (adding optional claudeSessionId)');
         state.version = 2;
+      }
+
+      // v2→v3 migration: add backendType and backendSessionId
+      if (state.version === 2) {
+        console.log('[persistence] Migrating v2 → v3 (adding backendType + backendSessionId)');
+        for (const s of state.sessions) {
+          if (!s.backendType) {
+            s.backendType = 'claude';
+          }
+          if (!s.backendSessionId && s.claudeSessionId) {
+            s.backendSessionId = s.claudeSessionId;
+          }
+        }
+        state.version = 3;
       }
 
       if (state.version !== PERSISTENCE_VERSION) {
@@ -61,13 +75,15 @@ export class SessionPersistence {
         if (session) {
           sessions.push({
             sessionId: session.sessionId,
-            claudeSessionId: session.claudeSessionId,
+            backendSessionId: session.backendSessionId ?? session.claudeSessionId,
+            claudeSessionId: session.claudeSessionId ?? session.backendSessionId,
             name: entry.name,
             workingDirectory: entry.workingDirectory,
             userId: session.userId,
             chatId: session.chatId,
             startedAt: session.startedAt.toISOString(),
             lastActivityAt: session.lastActivityAt.toISOString(),
+            backendType: session.backendType ?? entry.backendType ?? 'claude',
           });
         }
       }

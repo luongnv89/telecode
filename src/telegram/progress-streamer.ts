@@ -1,4 +1,4 @@
-import type { ClaudeOutputChunk } from '../claude/message-parser.js';
+import type { AdapterOutputChunk } from '../backends/types.js';
 import type { TelegramSender } from './sender.js';
 import type { DisplayMode } from './user-preferences.js';
 import { createProgress } from '../types/envelope.js';
@@ -15,7 +15,7 @@ export interface ProgressStreamerConfig {
 }
 
 export interface ProgressStreamer {
-  onChunk(chunk: ClaudeOutputChunk): void;
+  onChunk(chunk: AdapterOutputChunk): void;
   flush(): Promise<void>;
   stop(): void;
   getStats(): { chunkCount: number; elapsedMs: number };
@@ -93,7 +93,7 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
   }
 
   return {
-    onChunk(chunk: ClaudeOutputChunk): void {
+    onChunk(chunk: AdapterOutputChunk): void {
       chunkCount++;
       totalChars += chunk.content.length;
 

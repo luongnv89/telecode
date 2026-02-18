@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Session, SessionState } from '../types/session.js';
-import type { ClaudeAdapter } from './adapter.js';
+import type { CodingAdapter } from '../backends/types.js';
 
 /** A recorded state transition for audit/query purposes. */
 export interface StateTransition {
@@ -12,10 +12,10 @@ export interface StateTransition {
 
 export class SessionManager {
   private session: Session | null = null;
-  private adapter: ClaudeAdapter;
+  private adapter: CodingAdapter;
   private transitions: StateTransition[] = [];
 
-  constructor(adapter: ClaudeAdapter) {
+  constructor(adapter: CodingAdapter) {
     this.adapter = adapter;
   }
 
@@ -63,8 +63,9 @@ export class SessionManager {
 
     this.recordTransition('none', 'starting', sessionId);
 
-    const claudeSession = await this.adapter.startSession();
-    this.session.claudeSessionId = claudeSession.claudeSessionId;
+    const adapterResult = await this.adapter.startSession();
+    this.session.backendSessionId = adapterResult.backendSessionId;
+    this.session.claudeSessionId = adapterResult.backendSessionId; // backward compat
     this.session.state = 'active';
     this.recordTransition('starting', 'active', sessionId);
 
@@ -75,7 +76,7 @@ export class SessionManager {
     userId: number,
     chatId: number,
     workingDirectory: string,
-    claudeSessionIdToResume: string,
+    backendSessionIdToResume: string,
     name?: string,
   ): Promise<Session> {
     if (this.isActive()) {
@@ -98,8 +99,9 @@ export class SessionManager {
 
     this.recordTransition('none', 'starting', sessionId);
 
-    const claudeSession = await this.adapter.attachSession(claudeSessionIdToResume);
-    this.session.claudeSessionId = claudeSession.claudeSessionId;
+    const adapterResult = await this.adapter.attachSession(backendSessionIdToResume);
+    this.session.backendSessionId = adapterResult.backendSessionId;
+    this.session.claudeSessionId = adapterResult.backendSessionId; // backward compat
     this.session.state = 'active';
     this.recordTransition('starting', 'active', sessionId);
 
