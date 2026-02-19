@@ -131,7 +131,7 @@ describe('parseOpencodeEvent', () => {
       });
     });
 
-    it('returns tool_result for completed tool', () => {
+    it('returns tool_result for completed tool with label and output', () => {
       const event = {
         type: 'message.part.updated',
         properties: {
@@ -143,13 +143,13 @@ describe('parseOpencodeEvent', () => {
         },
       };
       const result = parseOpencodeEvent(event);
-      expect(result).toEqual({
-        type: 'chunk',
-        chunk: { type: 'tool_result', content: 'command output here' },
-      });
+      expect(result?.chunk?.type).toBe('tool_result');
+      expect(result?.chunk?.content).toContain('bash_123');
+      expect(result?.chunk?.content).toContain('✓');
+      expect(result?.chunk?.content).toContain('command output here');
     });
 
-    it('truncates tool output to 200 characters', () => {
+    it('truncates tool output in completed result', () => {
       const longOutput = 'x'.repeat(300);
       const event = {
         type: 'message.part.updated',
@@ -162,10 +162,12 @@ describe('parseOpencodeEvent', () => {
         },
       };
       const result = parseOpencodeEvent(event);
-      expect(result?.chunk?.content).toHaveLength(200);
+      // Output is truncated to 150 chars + label prefix
+      expect(result?.chunk?.content).toContain('✓');
+      expect(result!.chunk!.content.length).toBeLessThan(200);
     });
 
-    it('returns tool_result with error for errored tool', () => {
+    it('returns tool_result with error label for errored tool', () => {
       const event = {
         type: 'message.part.updated',
         properties: {
@@ -177,10 +179,10 @@ describe('parseOpencodeEvent', () => {
         },
       };
       const result = parseOpencodeEvent(event);
-      expect(result).toEqual({
-        type: 'chunk',
-        chunk: { type: 'tool_result', content: 'Error: command not found' },
-      });
+      expect(result?.chunk?.type).toBe('tool_result');
+      expect(result?.chunk?.content).toContain('bash_123');
+      expect(result?.chunk?.content).toContain('✗');
+      expect(result?.chunk?.content).toContain('command not found');
     });
 
     it('returns null for tool with unknown status', () => {

@@ -43,21 +43,28 @@ export function parseOpencodeEvent(event: unknown): ParsedOpencodeEvent | null {
       if (part['type'] === 'tool') {
         const state = part['state'] as Record<string, unknown> | undefined;
         const title = typeof state?.['title'] === 'string' ? state['title'] : undefined;
-        const toolId = typeof part['toolID'] === 'string' ? part['toolID'] : 'tool';
+        const toolId = typeof part['toolID'] === 'string' ? part['toolID'] : '';
+        const toolName = typeof part['toolName'] === 'string' ? part['toolName'] : '';
         const status = typeof state?.['status'] === 'string' ? state['status'] : '';
 
+        // Build the most descriptive label we can from the event
+        const label = title || summarizeOpencodeTool(toolName || toolId, state) || toolName || toolId || 'tool';
+
         if (status === 'running' || status === 'pending') {
-          return { type: 'chunk', chunk: { type: 'tool_use', content: title ?? toolId } };
+          return { type: 'chunk', chunk: { type: 'tool_use', content: label } };
         }
 
         if (status === 'completed') {
           const output = typeof state?.['output'] === 'string' ? state['output'] : '';
-          return { type: 'chunk', chunk: { type: 'tool_result', content: output.slice(0, 200) } };
+          const summary = output
+            ? `${label} ✓ ${output.slice(0, 150).replace(/\n/g, ' ')}`
+            : `${label} ✓`;
+          return { type: 'chunk', chunk: { type: 'tool_result', content: summary } };
         }
 
         if (status === 'error') {
           const error = typeof state?.['error'] === 'string' ? state['error'] : 'Tool error';
-          return { type: 'chunk', chunk: { type: 'tool_result', content: `Error: ${error}` } };
+          return { type: 'chunk', chunk: { type: 'tool_result', content: `${label} ✗ ${error}` } };
         }
 
         return null;
@@ -119,4 +126,42 @@ export function parseOpencodeEvent(event: unknown): ParsedOpencodeEvent | null {
     default:
       return null;
   }
+}
+
+/**
+ * Attempt to build a human-readable summary from an OpenCode tool's state.
+ * OpenCode tools may carry input/arguments in state metadata.
+ */
+function summarizeOpencodeTool(
+  toolName: string,
+  state: Record<string, unknown> | undefined,
+): string {
+  if (!state) return '';
+
+  const input = state['input'] as Record<string, unknown> | undefined;
+  const metadata = state['metadata'] as Record<string, unknown> | undefined;
+  const args = input || metadata;
+
+  const name = toolName.replace(/^(tool_|mcp_)/, '');
+
+  if (!args) return name || '';
+
+  // Common tool patterns (similar to Claude's tool names)
+  const filePath = args['file_path'] ?? args['path'] ?? args['filePath'];
+  const command = args['command'] ?? args['cmd'];
+  const pattern = args['pattern'] ?? args['query'];
+
+  if (filePath && typeof filePath === 'string') {
+    const action = name || 'File';
+    return `${action}: ${filePath}`;
+  }
+  if (command && typeof command === 'string') {
+    const cmd = String(command).slice(0, 80);
+    return `${name || 'Shell'}: ${cmd}${String(command).length > 80 ? '...' : ''}`;
+  }
+  if (pattern && typeof pattern === 'string') {
+    return `${name || 'Search'}: ${pattern}`;
+  }
+
+  return name || '';
 }

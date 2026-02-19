@@ -139,7 +139,8 @@ describe('ProgressStreamer', () => {
     const call = (sender.sendResponse as any).mock.calls[0];
     const envelope = call[1];
     expect(envelope.type).toBe('progress');
-    expect(envelope.text).toMatch(/Working\.\.\. \d+s \| 1 updates/);
+    // Text-only chunks don't increment tool count
+    expect(envelope.text).toMatch(/Working\.\.\. \d+s/);
     streamer.stop();
   });
 
@@ -155,7 +156,7 @@ describe('ProgressStreamer', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     const call = (sender.sendResponse as any).mock.calls[0];
-    expect(call[1].text).toContain('> Read: src/index.ts');
+    expect(call[1].text).toContain('› Read: src/index.ts');
     streamer.stop();
   });
 
@@ -178,9 +179,9 @@ describe('ProgressStreamer', () => {
 
     const lastCall = (sender.sendResponse as any).mock.calls[2];
     const text = lastCall[1].text;
-    expect(text).toContain('> Read: src/index.ts');
-    expect(text).toContain('> Bash: npm test');
-    expect(text).toContain('> Edit: src/config.ts');
+    expect(text).toContain('› Read: src/index.ts');
+    expect(text).toContain('› Bash: npm test');
+    expect(text).toContain('› Edit: src/config.ts');
     streamer.stop();
   });
 
@@ -204,8 +205,8 @@ describe('ProgressStreamer', () => {
     const text = lastCall[1].text;
     // First item should have been evicted
     expect(text).not.toContain('file1.ts');
-    expect(text).toContain('> Read: file2.ts');
-    expect(text).toContain('> Read: file3.ts');
+    expect(text).toContain('› Read: file2.ts');
+    expect(text).toContain('› Read: file3.ts');
     streamer.stop();
   });
 
@@ -227,9 +228,9 @@ describe('ProgressStreamer', () => {
 
     const lastCall = (sender.sendResponse as any).mock.calls[1];
     const text = lastCall[1].text;
-    expect(text).toMatch(/\[\d+s\] 2 updates \(\d+ chars\)/);
+    expect(text).toMatch(/\[\d+s\] 1 tool call \(\d+ chars\)/);
     expect(text).toContain('Recent activity:');
-    expect(text).toContain('> Read: src/index.ts');
+    expect(text).toContain('› Read: src/index.ts');
     expect(text).toContain('Last output:');
     expect(text).toContain('> ...');
     streamer.stop();
@@ -266,7 +267,7 @@ describe('ProgressStreamer', () => {
     const call = (sender.sendResponse as any).mock.calls[0];
     const text = call[1].text;
     expect(text).toContain('Recent activity:');
-    expect(text).toContain('> Bash: npm test');
+    expect(text).toContain('› Bash: npm test');
     expect(text).not.toContain('Last output:');
     streamer.stop();
   });
@@ -352,8 +353,8 @@ describe('ProgressStreamer', () => {
 
     const call = (sender.sendResponse as any).mock.calls[0];
     const text = call[1].text;
-    expect(text).not.toContain('>');
-    expect(text).toMatch(/Working\.\.\. \d+s \| 1 updates/);
+    expect(text).not.toContain('›');
+    expect(text).toMatch(/Working\.\.\. \d+s/);
     streamer.stop();
   });
 

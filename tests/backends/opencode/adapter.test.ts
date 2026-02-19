@@ -275,7 +275,9 @@ describe('createOpencodeAdapter', () => {
       expect(result.success).toBe(true);
       expect(chunks).toHaveLength(2);
       expect(chunks[0]).toEqual({ type: 'tool_use', content: 'Running ls' });
-      expect(chunks[1]).toEqual({ type: 'tool_result', content: 'file1.txt\nfile2.txt' });
+      expect(chunks[1].type).toBe('tool_result');
+      expect(chunks[1].content).toContain('✓');
+      expect(chunks[1].content).toContain('file1.txt');
     });
 
     it('passes model spec when configured', async () => {

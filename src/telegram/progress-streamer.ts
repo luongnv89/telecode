@@ -30,6 +30,7 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
   const startTime = Date.now();
   let chunkCount = 0;
   let totalChars = 0;
+  let toolCount = 0;
   let lastSendTime = startTime;
   let lastContent = '';
   let pendingSend = false;
@@ -43,22 +44,34 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
   }, TYPING_INTERVAL_MS);
 
   function addToolAction(summary: string): void {
+    // Deduplicate consecutive identical entries (e.g. repeated "running" events)
+    if (toolTimeline.length > 0 && toolTimeline[toolTimeline.length - 1] === summary) {
+      return;
+    }
     toolTimeline.push(summary);
     if (toolTimeline.length > maxTimelineItems) {
       toolTimeline.shift();
     }
   }
 
+  function formatElapsed(): string {
+    const totalSec = Math.round((Date.now() - startTime) / 1000);
+    if (totalSec < 60) return `${totalSec}s`;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}m${s > 0 ? ` ${s}s` : ''}`;
+  }
+
   function formatMessage(): string {
-    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const elapsed = formatElapsed();
 
     if (config.mode === 'verbose') {
-      let text = `[${elapsed}s] ${chunkCount} updates (${totalChars} chars)`;
+      let text = `[${elapsed}] ${toolCount} tool call${toolCount !== 1 ? 's' : ''} (${totalChars} chars)`;
 
       if (toolTimeline.length > 0) {
         text += '\n\nRecent activity:';
         for (const action of toolTimeline) {
-          text += `\n> ${action}`;
+          text += `\n› ${action}`;
         }
       }
 
@@ -72,11 +85,14 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
       return text;
     }
 
-    // Concise mode
-    let text = `Working... ${elapsed}s | ${chunkCount} updates`;
+    // Concise mode — show elapsed, tool count, and recent activity
+    let text = `Working... ${elapsed}`;
+    if (toolCount > 0) {
+      text += ` | ${toolCount} tool${toolCount !== 1 ? 's' : ''}`;
+    }
     if (toolTimeline.length > 0) {
       for (const action of toolTimeline) {
-        text += `\n> ${action}`;
+        text += `\n› ${action}`;
       }
     }
     return text;
@@ -99,6 +115,9 @@ export function createProgressStreamer(config: ProgressStreamerConfig): Progress
       totalChars += chunk.content.length;
 
       if (chunk.type === 'tool_use') {
+        toolCount++;
+        addToolAction(chunk.content);
+      } else if (chunk.type === 'tool_result') {
         addToolAction(chunk.content);
       } else {
         lastContent = chunk.content;
