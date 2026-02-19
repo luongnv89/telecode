@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Code from anywhere.</strong><br/><br/>
-  Telegram bot that wraps Claude Code for remote macOS control.<br/>
+  Telegram bot that wraps Claude Code for remote control.<br/>
   Send prompts, manage sessions, and receive sanitized responses — all from your phone.
 </p>
 
@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://github.com/luongnv89/telecode/actions"><img src="https://img.shields.io/github/actions/workflow/status/luongnv89/telecode/ci.yml?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node.js 18+" />
-  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="macOS | Linux" />
 </p>
 
 ## Features
@@ -24,7 +24,7 @@
 - **Audit logging** — per-session JSONL logs for every command and response
 - **Session bookmarks** — save and restore working directories instantly
 - **Resilience** — automatic stale session detection, crash notifications, and retry policies
-- **One-line install** — `curl | bash` with optional macOS LaunchAgent service
+- **One-line install** — `curl | bash` with optional macOS LaunchAgent or Linux systemd service
 
 ## Install
 

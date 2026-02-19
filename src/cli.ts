@@ -5,12 +5,13 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn, execSync } from 'node:child_process';
+import { getDataDir, getLogDir } from './paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const DATA_DIR = join(homedir(), 'Library', 'Application Support', 'telecode');
+const DATA_DIR = getDataDir();
 const PID_FILE = join(DATA_DIR, 'telecode.pid');
-const LOG_DIR = join(homedir(), 'Library', 'Logs', 'telecode');
+const LOG_DIR = getLogDir();
 
 function loadPackageVersion(): string {
   try {

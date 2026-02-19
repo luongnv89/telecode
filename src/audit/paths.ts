@@ -1,14 +1,9 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { getDataDir } from '../paths.js';
 
-const DEFAULT_LOG_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'telecode',
-  'logs'
-);
+const DEFAULT_LOG_DIR = join(getDataDir(), 'logs');
 
 export function resolveLogDir(configPath?: string): string {
   if (!configPath) return DEFAULT_LOG_DIR;

@@ -105,8 +105,15 @@ You clicked a permission button but don't have a focused session. This can happe
 ### Log files not appearing
 
 Check the log directory exists and is writable:
+
+**macOS:**
 ```bash
 ls -la ~/Library/Application\ Support/telecode/logs/
+```
+
+**Linux:**
+```bash
+ls -la ~/.local/share/telecode/logs/
 ```
 
 If using a custom `LOG_PATH`, verify the directory exists.
@@ -114,6 +121,13 @@ If using a custom `LOG_PATH`, verify the directory exists.
 ### How to read audit logs
 
 Audit logs are JSONL files (one JSON object per line):
+
+**macOS:**
 ```bash
 cat ~/Library/Application\ Support/telecode/logs/session-*.jsonl | jq .
+```
+
+**Linux:**
+```bash
+cat ~/.local/share/telecode/logs/session-*.jsonl | jq .
 ```

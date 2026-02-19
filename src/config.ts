@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { config as loadDotenv } from 'dotenv';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { getDataDir } from './paths.js';
 
 export interface ConfigOverrides {
   envFilePath?: string;
@@ -11,29 +12,9 @@ export interface ConfigOverrides {
   workspace?: string;
 }
 
-const DEFAULT_LOG_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'telecode',
-  'logs'
-);
-
-const DEFAULT_SESSIONS_FILE = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'telecode',
-  'sessions.json'
-);
-
-const DEFAULT_BOOKMARKS_FILE = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'telecode',
-  'bookmarks.json'
-);
+const DEFAULT_LOG_PATH = join(getDataDir(), 'logs');
+const DEFAULT_SESSIONS_FILE = join(getDataDir(), 'sessions.json');
+const DEFAULT_BOOKMARKS_FILE = join(getDataDir(), 'bookmarks.json');
 
 const configSchema = z.object({
   telegramBotToken: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),

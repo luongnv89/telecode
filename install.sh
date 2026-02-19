@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# TeleCode — macOS Installation Script
-# Installs TeleCode and optionally registers it as a LaunchAgent service
-# that starts automatically on login and stays running.
+# TeleCode — Installation Script (macOS & Linux)
+# Installs TeleCode and optionally registers it as a system service
+# (LaunchAgent on macOS, systemd user unit on Linux).
 # ==============================================================================
 set -euo pipefail
 
@@ -21,11 +21,26 @@ warn()    { printf "${YELLOW}[warn]${NC}    %s\n" "$*"; }
 error()   { printf "${RED}[error]${NC}   %s\n" "$*"; }
 step()    { printf "\n${BOLD}${CYAN}==> %s${NC}\n" "$*"; }
 
+# ── Platform detection ──────────────────────────────────────────────────────
+OS="$(uname -s)"
+
+if [[ "$OS" == "Darwin" ]]; then
+    APP_DATA_DIR="$HOME/Library/Application Support/telecode"
+    LOG_DIR="$HOME/Library/Logs/telecode"
+    PLIST_LABEL="com.telecode.bot"
+    PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
+elif [[ "$OS" == "Linux" ]]; then
+    APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/telecode"
+    LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/telecode/log"
+    SYSTEMD_DIR="$HOME/.config/systemd/user"
+    SYSTEMD_UNIT="telecode.service"
+    SYSTEMD_PATH="$SYSTEMD_DIR/$SYSTEMD_UNIT"
+else
+    error "Unsupported OS: $OS. Only macOS and Linux are supported."
+    exit 1
+fi
+
 # ── Constants ────────────────────────────────────────────────────────────────
-PLIST_LABEL="com.telecode.bot"
-PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
-APP_DATA_DIR="$HOME/Library/Application Support/telecode"
-LOG_DIR="$HOME/Library/Logs/telecode"
 MIN_NODE_VERSION=18
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.telecode}"
 REPO_URL="https://github.com/luongnv89/telecode.git"
@@ -54,14 +69,20 @@ INSTALL_SERVICE=false
 UNINSTALL=false
 
 usage() {
+    local svc_desc="LaunchAgent/systemd"
+    if [[ "$OS" == "Darwin" ]]; then
+        svc_desc="LaunchAgent"
+    elif [[ "$OS" == "Linux" ]]; then
+        svc_desc="systemd user"
+    fi
     cat <<EOF
-${BOLD}TeleCode Installer for macOS${NC}
+${BOLD}TeleCode Installer (macOS & Linux)${NC}
 
 Usage: install.sh [OPTIONS]
 
 Options:
-  --service       Install as a LaunchAgent service (auto-start on login)
-  --uninstall     Remove the LaunchAgent service
+  --service       Install as a ${svc_desc} service (auto-start on login)
+  --uninstall     Remove the service
   -h, --help      Show this help message
 
 Examples:
@@ -89,19 +110,42 @@ done
 if $UNINSTALL; then
     step "Uninstalling TeleCode service"
 
-    if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
-        info "Stopping service..."
-        launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
-        success "Service stopped"
-    else
-        info "Service is not running"
-    fi
+    if [[ "$OS" == "Darwin" ]]; then
+        if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
+            info "Stopping service..."
+            launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
+            success "Service stopped"
+        else
+            info "Service is not running"
+        fi
 
-    if [ -f "$PLIST_PATH" ]; then
-        rm "$PLIST_PATH"
-        success "Removed $PLIST_PATH"
-    else
-        info "Plist not found, nothing to remove"
+        if [ -f "$PLIST_PATH" ]; then
+            rm "$PLIST_PATH"
+            success "Removed $PLIST_PATH"
+        else
+            info "Plist not found, nothing to remove"
+        fi
+    elif [[ "$OS" == "Linux" ]]; then
+        if systemctl --user is-active --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
+            info "Stopping service..."
+            systemctl --user stop "$SYSTEMD_UNIT"
+            success "Service stopped"
+        else
+            info "Service is not running"
+        fi
+
+        if systemctl --user is-enabled --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
+            systemctl --user disable "$SYSTEMD_UNIT"
+            success "Service disabled"
+        fi
+
+        if [ -f "$SYSTEMD_PATH" ]; then
+            rm "$SYSTEMD_PATH"
+            systemctl --user daemon-reload
+            success "Removed $SYSTEMD_PATH"
+        else
+            info "Unit file not found, nothing to remove"
+        fi
     fi
 
     printf "\n${GREEN}${BOLD}TeleCode service uninstalled.${NC}\n"
@@ -118,40 +162,77 @@ fi
 # ── Pre-flight checks ───────────────────────────────────────────────────────
 step "Checking system requirements"
 
-# macOS check
-if [[ "$(uname -s)" != "Darwin" ]]; then
-    error "This script is for macOS only."
-    exit 1
-fi
-success "macOS detected ($(sw_vers -productVersion), $(uname -m))"
-
-# Homebrew
-if ! command -v brew &>/dev/null; then
-    warn "Homebrew not found. Installing..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-    # Add brew to PATH for Apple Silicon
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
+# OS check
+if [[ "$OS" == "Darwin" ]]; then
+    success "macOS detected ($(sw_vers -productVersion), $(uname -m))"
+elif [[ "$OS" == "Linux" ]]; then
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        success "Linux detected ($PRETTY_NAME, $(uname -m))"
+    else
+        success "Linux detected ($(uname -m))"
     fi
-    success "Homebrew installed"
-else
-    success "Homebrew found ($(brew --version | head -1))"
 fi
 
-# Node.js
-if ! command -v node &>/dev/null; then
-    warn "Node.js not found. Installing via Homebrew..."
-    brew install node
-    success "Node.js installed ($(node -v))"
-else
-    NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-    if (( NODE_VERSION < MIN_NODE_VERSION )); then
-        error "Node.js v${MIN_NODE_VERSION}+ required, found $(node -v)"
-        info "Run: brew upgrade node"
-        exit 1
+# Dependencies — platform-specific
+if [[ "$OS" == "Darwin" ]]; then
+    # Homebrew
+    if ! command -v brew &>/dev/null; then
+        warn "Homebrew not found. Installing..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+        # Add brew to PATH for Apple Silicon
+        if [[ "$(uname -m)" == "arm64" ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        fi
+        success "Homebrew installed"
+    else
+        success "Homebrew found ($(brew --version | head -1))"
     fi
-    success "Node.js $(node -v) found"
+
+    # Node.js
+    if ! command -v node &>/dev/null; then
+        warn "Node.js not found. Installing via Homebrew..."
+        brew install node
+        success "Node.js installed ($(node -v))"
+    else
+        NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
+        if (( NODE_VERSION < MIN_NODE_VERSION )); then
+            error "Node.js v${MIN_NODE_VERSION}+ required, found $(node -v)"
+            info "Run: brew upgrade node"
+            exit 1
+        fi
+        success "Node.js $(node -v) found"
+    fi
+elif [[ "$OS" == "Linux" ]]; then
+    # Node.js
+    if ! command -v node &>/dev/null; then
+        warn "Node.js not found. Attempting to install..."
+        if command -v apt-get &>/dev/null; then
+            info "Installing Node.js via apt-get..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq nodejs npm
+        elif command -v dnf &>/dev/null; then
+            info "Installing Node.js via dnf..."
+            sudo dnf install -y nodejs npm
+        elif command -v pacman &>/dev/null; then
+            info "Installing Node.js via pacman..."
+            sudo pacman -S --noconfirm nodejs npm
+        else
+            error "Node.js not found and no supported package manager (apt-get, dnf, pacman) detected."
+            error "Please install Node.js ${MIN_NODE_VERSION}+ manually: https://nodejs.org"
+            exit 1
+        fi
+        success "Node.js installed ($(node -v))"
+    else
+        NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
+        if (( NODE_VERSION < MIN_NODE_VERSION )); then
+            error "Node.js v${MIN_NODE_VERSION}+ required, found $(node -v)"
+            info "Please upgrade Node.js to version ${MIN_NODE_VERSION}+."
+            exit 1
+        fi
+        success "Node.js $(node -v) found"
+    fi
 fi
 
 # npm
@@ -165,7 +246,11 @@ success "npm $(npm -v) found"
 if ! command -v git &>/dev/null; then
     if $REMOTE_INSTALL; then
         error "git is required for remote installation but was not found."
-        info "Install with: brew install git"
+        if [[ "$OS" == "Darwin" ]]; then
+            info "Install with: brew install git"
+        else
+            info "Install with your package manager (e.g., apt-get install git)"
+        fi
         exit 1
     else
         warn "git not found (not required for local install)"
@@ -283,29 +368,33 @@ node --check "$PROJECT_DIR/dist/cli.js" 2>/dev/null && \
 
 # ── Service installation ─────────────────────────────────────────────────────
 if $INSTALL_SERVICE; then
-    step "Installing LaunchAgent service"
-
     # Resolve full node path
     NODE_BIN=$(which node)
     info "Using Node.js: $NODE_BIN"
 
-    # Collect PATH (ensure brew + claude are reachable)
-    SERVICE_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        SERVICE_PATH="/opt/homebrew/bin:$SERVICE_PATH"
-    fi
-    # Include user's local bin for claude
-    SERVICE_PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$SERVICE_PATH"
+    if [[ "$OS" == "Darwin" ]]; then
+        step "Installing LaunchAgent service"
 
-    # Stop existing service if running
-    if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
-        info "Stopping existing service..."
-        launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
-        sleep 1
-    fi
+        # Collect PATH (ensure brew + claude are reachable)
+        SERVICE_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if [[ "$(uname -m)" == "arm64" ]]; then
+            SERVICE_PATH="/opt/homebrew/bin:$SERVICE_PATH"
+        fi
+        # Include user's local bin for claude
+        SERVICE_PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$SERVICE_PATH"
 
-    # Write plist
-    cat > "$PLIST_PATH" <<PLIST
+        # Stop existing service if running
+        if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
+            info "Stopping existing service..."
+            launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
+            sleep 1
+        fi
+
+        # Ensure LaunchAgents directory exists
+        mkdir -p "$HOME/Library/LaunchAgents"
+
+        # Write plist
+        cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -364,23 +453,79 @@ if $INSTALL_SERVICE; then
 </plist>
 PLIST
 
-    success "Created $PLIST_PATH"
+        success "Created $PLIST_PATH"
 
-    if $ENV_NEEDS_EDIT; then
-        warn "Service NOT started — .env needs configuration first."
-        warn "After editing .env, start with:"
-        warn "  launchctl bootstrap gui/$(id -u) $PLIST_PATH"
-    else
-        info "Starting service..."
-        launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
-        sleep 2
-
-        # Check if running
-        if launchctl print "gui/$(id -u)/$PLIST_LABEL" &>/dev/null; then
-            success "Service is running"
+        if $ENV_NEEDS_EDIT; then
+            warn "Service NOT started — .env needs configuration first."
+            warn "After editing .env, start with:"
+            warn "  launchctl bootstrap gui/$(id -u) $PLIST_PATH"
         else
-            warn "Service may have failed to start. Check logs:"
-            warn "  tail -f $LOG_DIR/stderr.log"
+            info "Starting service..."
+            launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
+            sleep 2
+
+            # Check if running
+            if launchctl print "gui/$(id -u)/$PLIST_LABEL" &>/dev/null; then
+                success "Service is running"
+            else
+                warn "Service may have failed to start. Check logs:"
+                warn "  tail -f $LOG_DIR/stderr.log"
+            fi
+        fi
+
+    elif [[ "$OS" == "Linux" ]]; then
+        step "Installing systemd user service"
+
+        # Ensure systemd user directory exists
+        mkdir -p "$SYSTEMD_DIR"
+
+        # Build PATH for service
+        SERVICE_PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/bin:/usr/bin:/bin"
+
+        # Write systemd unit
+        cat > "$SYSTEMD_PATH" <<UNIT
+[Unit]
+Description=Telecode — Telegram bot for Claude Code
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${NODE_BIN} ${PROJECT_DIR}/dist/cli.js start
+WorkingDirectory=${PROJECT_DIR}
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PATH=${SERVICE_PATH}
+StandardOutput=append:${LOG_DIR}/stdout.log
+StandardError=append:${LOG_DIR}/stderr.log
+
+[Install]
+WantedBy=default.target
+UNIT
+
+        success "Created $SYSTEMD_PATH"
+
+        # Reload systemd to pick up the new unit
+        systemctl --user daemon-reload
+
+        if $ENV_NEEDS_EDIT; then
+            warn "Service NOT started — .env needs configuration first."
+            warn "After editing .env, start with:"
+            warn "  systemctl --user enable --now $SYSTEMD_UNIT"
+        else
+            info "Enabling and starting service..."
+            systemctl --user enable --now "$SYSTEMD_UNIT"
+            sleep 2
+
+            # Check if running
+            if systemctl --user is-active --quiet "$SYSTEMD_UNIT"; then
+                success "Service is running"
+            else
+                warn "Service may have failed to start. Check logs:"
+                warn "  journalctl --user -u $SYSTEMD_UNIT -f"
+                warn "  tail -f $LOG_DIR/stderr.log"
+            fi
         fi
     fi
 fi
@@ -399,8 +544,13 @@ printf "  ${BOLD}App data:${NC}    %s\n" "$APP_DATA_DIR"
 printf "  ${BOLD}Config:${NC}      %s/.env\n" "$PROJECT_DIR"
 
 if $INSTALL_SERVICE; then
-    printf "  ${BOLD}Service:${NC}     %s\n" "$PLIST_LABEL"
-    printf "  ${BOLD}Plist:${NC}       %s\n" "$PLIST_PATH"
+    if [[ "$OS" == "Darwin" ]]; then
+        printf "  ${BOLD}Service:${NC}     %s\n" "$PLIST_LABEL"
+        printf "  ${BOLD}Plist:${NC}       %s\n" "$PLIST_PATH"
+    elif [[ "$OS" == "Linux" ]]; then
+        printf "  ${BOLD}Service:${NC}     %s\n" "$SYSTEMD_UNIT"
+        printf "  ${BOLD}Unit file:${NC}   %s\n" "$SYSTEMD_PATH"
+    fi
     printf "  ${BOLD}Logs:${NC}        %s/\n" "$LOG_DIR"
 fi
 
@@ -414,9 +564,17 @@ printf "  %-42s %s\n" "Dev mode:" "cd $PROJECT_DIR && npm run dev"
 
 if $INSTALL_SERVICE; then
     printf "\n${BOLD}Service commands:${NC}\n"
-    printf "  %-42s %s\n" "Start service:" "launchctl bootstrap gui/\$(id -u) $PLIST_PATH"
-    printf "  %-42s %s\n" "Stop service:" "launchctl bootout gui/\$(id -u)/$PLIST_LABEL"
-    printf "  %-42s %s\n" "Check status:" "launchctl print gui/\$(id -u)/$PLIST_LABEL"
+    if [[ "$OS" == "Darwin" ]]; then
+        printf "  %-42s %s\n" "Start service:" "launchctl bootstrap gui/\$(id -u) $PLIST_PATH"
+        printf "  %-42s %s\n" "Stop service:" "launchctl bootout gui/\$(id -u)/$PLIST_LABEL"
+        printf "  %-42s %s\n" "Check status:" "launchctl print gui/\$(id -u)/$PLIST_LABEL"
+    elif [[ "$OS" == "Linux" ]]; then
+        printf "  %-42s %s\n" "Start service:" "systemctl --user start $SYSTEMD_UNIT"
+        printf "  %-42s %s\n" "Stop service:" "systemctl --user stop $SYSTEMD_UNIT"
+        printf "  %-42s %s\n" "Enable on boot:" "systemctl --user enable $SYSTEMD_UNIT"
+        printf "  %-42s %s\n" "Check status:" "systemctl --user status $SYSTEMD_UNIT"
+        printf "  %-42s %s\n" "View journal:" "journalctl --user -u $SYSTEMD_UNIT -f"
+    fi
     printf "  %-42s %s\n" "View stdout:" "tail -f $LOG_DIR/stdout.log"
     printf "  %-42s %s\n" "View stderr:" "tail -f $LOG_DIR/stderr.log"
     printf "  %-42s %s\n" "Uninstall service:" "$PROJECT_DIR/install.sh --uninstall"

@@ -61,7 +61,7 @@ node dist/index.js
 
 ## macOS LaunchAgent (Auto-Start)
 
-The install script with `--service` creates a LaunchAgent at:
+The install script with `--service` on macOS creates a LaunchAgent at:
 ```
 ~/Library/LaunchAgents/com.telecode.bot.plist
 ```
@@ -78,9 +78,37 @@ launchctl unload ~/Library/LaunchAgents/com.telecode.bot.plist
 launchctl list | grep telecode
 ```
 
+## Linux systemd (Auto-Start)
+
+The install script with `--service` on Linux creates a systemd user unit at:
+```
+~/.config/systemd/user/telecode.service
+```
+
+Manual service management:
+```bash
+# Enable and start
+systemctl --user enable --now telecode.service
+
+# Stop
+systemctl --user stop telecode.service
+
+# Check status
+systemctl --user status telecode.service
+
+# View logs
+journalctl --user -u telecode.service -f
+```
+
+Data paths on Linux (following XDG Base Directory spec):
+```
+~/.local/share/telecode/         # App data (sessions, bookmarks, audit logs)
+~/.local/state/telecode/log/     # Service logs (stdout.log, stderr.log)
+```
+
 ## Prerequisites
 
-- **macOS** (Claude Code requirement)
+- **macOS** or **Linux**
 - **Node.js** 18+
 - **Claude Code** installed and authenticated (`claude --version`)
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)

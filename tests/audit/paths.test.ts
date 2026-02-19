@@ -2,20 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { resolveLogDir, sessionLogFilename } from '../../src/audit/paths.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { getDataDir } from '../../src/paths.js';
+
+const expectedDefaultLogDir = join(getDataDir(), 'logs');
 
 describe('resolveLogDir', () => {
   it('returns default path when no config provided', () => {
     const result = resolveLogDir();
-    expect(result).toBe(
-      join(homedir(), 'Library', 'Application Support', 'telecode', 'logs')
-    );
+    expect(result).toBe(expectedDefaultLogDir);
   });
 
   it('returns default path for empty string', () => {
     const result = resolveLogDir('');
-    expect(result).toBe(
-      join(homedir(), 'Library', 'Application Support', 'telecode', 'logs')
-    );
+    expect(result).toBe(expectedDefaultLogDir);
   });
 
   it('expands ~ to home directory', () => {
