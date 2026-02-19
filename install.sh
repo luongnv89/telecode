@@ -305,8 +305,6 @@ success "Build complete (dist/index.js)"
 # ── Link CLI globally ────────────────────────────────────────────────────────
 step "Linking telecode CLI"
 
-LINK_OK=false
-
 # On Linux, npm global prefix is often /usr/local which requires root.
 # Configure a user-writable prefix if needed.
 if [[ "$OS" == "Linux" ]]; then
@@ -320,26 +318,44 @@ if [[ "$OS" == "Linux" ]]; then
 fi
 
 if npm link --loglevel=warn 2>/dev/null; then
-    LINK_OK=true
     success "'telecode' command is now available globally"
 else
     warn "npm link failed — you can still run: node ${PROJECT_DIR}/dist/cli.js"
     warn "To retry manually: cd ${PROJECT_DIR} && npm link"
 fi
 
+# Ensure npm global bin is in the user's shell PATH permanently
+if [[ "$OS" == "Linux" ]]; then
+    NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"
+    PATH_LINE="export PATH=\"${NPM_BIN}:\$PATH\""
+
+    # Detect user's shell rc file
+    SHELL_NAME="$(basename "$SHELL" 2>/dev/null)"
+    case "$SHELL_NAME" in
+        zsh)  RC_FILE="$HOME/.zshrc" ;;
+        bash) RC_FILE="$HOME/.bashrc" ;;
+        *)    RC_FILE="$HOME/.profile" ;;
+    esac
+
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$NPM_BIN"; then
+        # Not in current PATH — add to rc file if not already there
+        if [ -f "$RC_FILE" ] && grep -qF "$NPM_BIN" "$RC_FILE" 2>/dev/null; then
+            info "PATH entry already in $RC_FILE"
+        else
+            info "Adding npm global bin to $RC_FILE..."
+            printf '\n# Added by TeleCode installer — npm global bin\n%s\n' "$PATH_LINE" >> "$RC_FILE"
+            success "Added $NPM_BIN to PATH in $RC_FILE"
+        fi
+        # Also export for the rest of this script
+        export PATH="$NPM_BIN:$PATH"
+    fi
+fi
+
 # Verify telecode is in PATH
 if command -v telecode &>/dev/null; then
     success "Verified: $(telecode version 2>/dev/null || echo 'telecode in PATH')"
 else
-    warn "'telecode' not found in PATH."
-    if [[ "$OS" == "Linux" ]]; then
-        NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"
-        warn "Add the npm global bin to your PATH by adding this to ~/.bashrc or ~/.zshrc:"
-        warn "  export PATH=\"${NPM_BIN}:\$PATH\""
-        warn "Then restart your shell or run: source ~/.bashrc"
-    else
-        warn "You may need to restart your shell."
-    fi
+    warn "'telecode' not found in PATH. You may need to restart your shell."
 fi
 
 # ── Environment configuration ────────────────────────────────────────────────
