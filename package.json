@@ -1,7 +1,7 @@
 {
   "name": "telecode",
   "version": "0.1.0",
-  "description": "Telegram bot that wraps Claude Code for remote macOS control",
+  "description": "Telegram bot that wraps Claude Code for remote control",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

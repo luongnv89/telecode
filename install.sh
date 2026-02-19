@@ -305,7 +305,22 @@ success "Build complete (dist/index.js)"
 # ── Link CLI globally ────────────────────────────────────────────────────────
 step "Linking telecode CLI"
 
+LINK_OK=false
+
+# On Linux, npm global prefix is often /usr/local which requires root.
+# Configure a user-writable prefix if needed.
+if [[ "$OS" == "Linux" ]]; then
+    NPM_PREFIX="$(npm config get prefix 2>/dev/null)"
+    if [ ! -w "$NPM_PREFIX/bin" ] 2>/dev/null; then
+        info "npm global prefix ($NPM_PREFIX) is not writable, setting up ~/.npm-global..."
+        mkdir -p "$HOME/.npm-global"
+        npm config set prefix "$HOME/.npm-global"
+        export PATH="$HOME/.npm-global/bin:$PATH"
+    fi
+fi
+
 if npm link --loglevel=warn 2>/dev/null; then
+    LINK_OK=true
     success "'telecode' command is now available globally"
 else
     warn "npm link failed — you can still run: node ${PROJECT_DIR}/dist/cli.js"
@@ -316,7 +331,15 @@ fi
 if command -v telecode &>/dev/null; then
     success "Verified: $(telecode version 2>/dev/null || echo 'telecode in PATH')"
 else
-    warn "'telecode' not found in PATH. You may need to restart your shell."
+    warn "'telecode' not found in PATH."
+    if [[ "$OS" == "Linux" ]]; then
+        NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"
+        warn "Add the npm global bin to your PATH by adding this to ~/.bashrc or ~/.zshrc:"
+        warn "  export PATH=\"${NPM_BIN}:\$PATH\""
+        warn "Then restart your shell or run: source ~/.bashrc"
+    else
+        warn "You may need to restart your shell."
+    fi
 fi
 
 # ── Environment configuration ────────────────────────────────────────────────
